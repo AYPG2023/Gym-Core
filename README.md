@@ -29,6 +29,8 @@ Cuentas:
 - Empleados con busqueda, filtros por sucursal, puesto y estado, acciones de activacion/desactivacion y datos laborales.
 - Metricas individuales para coaches y recepcionistas, con dos metas obligatorias, progreso y calculo de bonificacion.
 - Ordenes de compra de maquinas, repuestos, accesorios, oficina e insumos, con flujo de aprobacion y recepcion.
+- Sucursales con amenidades administradas como areas operativas.
+- Ordenes de compra con visto bueno del administrador de sucursal y gerente general antes de aprobar.
 - Recepcion de equipo con cantidades recibidas, entrega completa/parcial e incorporacion opcional al inventario antes de registrar maquina.
 - Reglas de negocio para reservas, cupos, maquinas, areas, membresias, traslapes y cancelaciones.
 - Datos persistentes en LocalStorage.

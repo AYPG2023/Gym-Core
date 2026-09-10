@@ -6,14 +6,14 @@ window.GYM_SEED = {
     { id: "u-client", name: "Ana Lopez", email: "cliente@gym.test", role: "client", clientId: "c1", status: "Activo" }
   ],
   branches: [
-    { id: "b1", code: "Z10", name: "Zona 10 Performance", address: "Avenida Reforma 10-45", phone: "2410-1000", email: "zona10@gym.test", manager: "Valeria Rivas", opens: "04:00", closes: "22:00", weekdayHours: "Lunes-viernes 04:00-22:00", weekendHours: "Sabados y domingos 06:00-14:00", expectedAttendance: "75-100 personas, con expectativa de crecimiento", capacity: 100, status: "Activa" },
-    { id: "b2", code: "MJD", name: "Majadas Athletic", address: "Calzada Roosevelt 26-70", phone: "2410-2000", email: "majadas@gym.test", manager: "Mario Escobar", opens: "04:00", closes: "22:00", weekdayHours: "Lunes-viernes 04:00-22:00", weekendHours: "Sabados y domingos 06:00-14:00", expectedAttendance: "75-100 personas, con expectativa de crecimiento", capacity: 100, status: "Activa" }
+    { id: "b1", code: "Z10", name: "Zona 10 Performance", address: "Avenida Reforma 10-45", phone: "2410-1000", email: "zona10@gym.test", manager: "Valeria Rivas", opens: "04:00", closes: "22:00", weekdayHours: "Lunes-viernes 04:00-22:00", weekendHours: "Sabados y domingos 06:00-14:00", expectedAttendance: "75-100 personas, con expectativa de crecimiento", amenities: ["Cardio", "Pesas", "CrossFit", "Vestidores", "Natacion"], capacity: 100, status: "Activa" },
+    { id: "b2", code: "MJD", name: "Majadas Athletic", address: "Calzada Roosevelt 26-70", phone: "2410-2000", email: "majadas@gym.test", manager: "Mario Escobar", opens: "04:00", closes: "22:00", weekdayHours: "Lunes-viernes 04:00-22:00", weekendHours: "Sabados y domingos 06:00-14:00", expectedAttendance: "75-100 personas, con expectativa de crecimiento", amenities: ["Spinning", "Entrenamiento funcional", "Salon de clases"], capacity: 100, status: "Activa" }
   ],
   plans: [
     { id: "p1", name: "Basica", price: 180, durationDays: 30, areas: ["a1", "a2", "a7"], reservationLimit: 4, status: "Activa" },
-    { id: "p2", name: "Premium Mensual", price: 320, durationDays: 30, areas: ["a1", "a2", "a3", "a4", "a5", "a6", "a7"], reservationLimit: 8, status: "Activa" },
-    { id: "p3", name: "Trimestral Elite", price: 850, durationDays: 90, areas: ["a1", "a2", "a3", "a4", "a5", "a6", "a7"], reservationLimit: 14, status: "Activa" },
-    { id: "p4", name: "Anual Corporate", price: 2600, durationDays: 365, areas: ["a1", "a2", "a3", "a4", "a5", "a6", "a7"], reservationLimit: 20, status: "Activa" }
+    { id: "p2", name: "Premium Mensual", price: 320, durationDays: 30, areas: ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a-natacion"], reservationLimit: 8, status: "Activa" },
+    { id: "p3", name: "Trimestral Elite", price: 850, durationDays: 90, areas: ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a-natacion"], reservationLimit: 14, status: "Activa" },
+    { id: "p4", name: "Anual Corporate", price: 2600, durationDays: 365, areas: ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a-natacion"], reservationLimit: 20, status: "Activa" }
   ],
   clients: [
     { id: "c1", code: "CLI-001", name: "Ana Lopez", email: "ana@gym.test", phone: "5551-2001", joinedAt: "2026-01-12", status: "Activo", branchId: "b1", membershipId: "m1", currentAreaId: "a1", observations: "Prefiere entrenar temprano." },
@@ -59,7 +59,8 @@ window.GYM_SEED = {
     { id: "a4", name: "CrossFit", description: "Jaulas, barras y circuito funcional.", branchId: "b1", capacity: 14, schedule: "06:00-20:00", status: "Disponible" },
     { id: "a5", name: "Entrenamiento funcional", description: "TRX, bandas y estaciones.", branchId: "b2", capacity: 12, schedule: "06:00-21:00", status: "Disponible" },
     { id: "a6", name: "Salon de clases", description: "Yoga, movilidad y HIIT.", branchId: "b2", capacity: 22, schedule: "07:00-20:00", status: "Cerrada" },
-    { id: "a7", name: "Vestidores", description: "Lockers y duchas.", branchId: "b1", capacity: 10, schedule: "05:00-22:00", status: "Disponible" }
+    { id: "a7", name: "Vestidores", description: "Lockers y duchas.", branchId: "b1", capacity: 10, schedule: "05:00-22:00", status: "Disponible" },
+    { id: "a-natacion", name: "Natacion", description: "Piscina para entrenamiento, tecnica y rehabilitacion.", branchId: "b1", capacity: 18, schedule: "04:00-22:00", status: "Disponible" }
   ],
   machines: [
     { id: "ma1", code: "CAR-001", name: "Caminadora Pro X", type: "Cardio", areaId: "a1", brand: "Nordic", model: "T9", simultaneousCapacity: 1, acquiredAt: "2024-02-10", lastMaintenance: "2026-08-10", nextMaintenance: "2026-10-10", notes: "Banda nueva", status: "Disponible" },

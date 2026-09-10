@@ -34,6 +34,10 @@ Las reglas estan implementadas en `assets/js/validations.js`.
 30. Las ordenes de compra deben seguir transiciones permitidas.
 31. Una orden recibida registra recepcion de articulos, cantidades, fecha, observaciones y entrega completa o parcial.
 32. Una maquina nueva recibida puede precargar el formulario Registrar maquina, pero nunca se incorpora sin confirmacion administrativa.
+33. Las amenidades de una sucursal se administran como areas operativas de esa sucursal.
+34. Al guardar amenidades en una sucursal, las areas nuevas se crean automaticamente si no existian.
+35. Una orden en revision necesita visto bueno del administrador de sucursal y del gerente general.
+36. La orden solo pasa a Aprobada cuando ambos vistos buenos estan registrados.
 
 ## Formula de disponibilidad
 
@@ -57,6 +61,8 @@ Ordenes de compra: Borrador, Solicitada, En revision, Aprobada, Rechazada, Orden
 Borrador -> Solicitada -> En revision -> Aprobada -> Ordenada -> Recibida
                          -> Rechazada
 Borrador/Solicitada/En revision/Aprobada/Ordenada -> Cancelada
+
+En revision + visto bueno sucursal + visto bueno gerencia -> Aprobada
 ```
 
 ## Regla de bonificacion

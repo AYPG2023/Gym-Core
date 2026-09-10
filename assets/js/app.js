@@ -42,9 +42,24 @@
       client.joinedAt ||= "2026-09-01";
       client.observations ||= "Sin observaciones registradas.";
     });
+    if (!data.areas.some((area) => area.name.toLowerCase() === "natacion")) {
+      data.areas.push({ id: "a-natacion", name: "Natacion", description: "Piscina para entrenamiento, tecnica y rehabilitacion.", branchId: "b1", capacity: 18, schedule: "04:00-22:00", status: "Disponible" });
+    }
+    data.plans.filter((plan) => ["p2", "p3", "p4"].includes(plan.id)).forEach((plan) => {
+      plan.areas ||= [];
+      if (!plan.areas.includes("a-natacion")) plan.areas.push("a-natacion");
+    });
     data.purchaseOrders.forEach((order) => {
       order.taxRate ??= 0.12;
       order.items ||= [];
+      order.approvals ||= { branchAdmin: null, generalManager: null };
+      const orderBranch = data.branches.find((branch) => branch.id === order.branchId);
+      order.branchAdminId ||= data.employees.find((employee) => employee.name === orderBranch?.manager)?.id || data.employees.find((employee) => employee.position === "Administrador" && employee.branchId === order.branchId)?.id || data.employees.find((employee) => employee.position === "Administrador")?.id;
+      order.generalManagerId ||= data.employees.find((employee) => employee.name === "Valeria Rivas")?.id || data.employees.find((employee) => employee.position === "Administrador")?.id;
+      if (["Aprobada", "Ordenada", "Recibida"].includes(order.status)) {
+        order.approvals.branchAdmin ||= { by: order.branchAdminId, at: `${order.date} 09:00` };
+        order.approvals.generalManager ||= { by: order.generalManagerId, at: `${order.date} 10:00` };
+      }
       order.status = order.status === "En revisión" ? "En revision" : order.status;
     });
     data.branches.forEach((branch, index) => {
@@ -55,6 +70,8 @@
       branch.weekdayHours ||= "Lunes-viernes 04:00-22:00";
       branch.weekendHours ||= "Sabados y domingos 06:00-14:00";
       branch.expectedAttendance ||= "75-100 personas, con expectativa de crecimiento";
+      branch.amenities ||= data.areas.filter((area) => area.branchId === branch.id).map((area) => area.name);
+      if (branch.id === "b1" && !branch.amenities.some((name) => name.toLowerCase() === "natacion")) branch.amenities.push("Natacion");
       branch.capacity ||= data.areas.filter((area) => area.branchId === branch.id).reduce((sum, area) => sum + Number(area.capacity || 0), 0);
       if (branch.status === "Disponible") branch.status = "Activa";
     });
@@ -68,6 +85,8 @@
     const list = roles[app.user?.role]?.permissions || [];
     return list.includes("all") || list.includes(permission);
   }
+
+  function isAdmin() { return app.user?.role === "admin"; }
 
   function icon(name, cls = "h-4 w-4") {
     return `<i data-lucide="${name}" class="${cls}"></i>`;
@@ -118,6 +137,22 @@
   function planName(id) { return byId("plans", id)?.name || "Plan"; }
   function branchOfMachine(machine) { return byId("areas", machine.areaId)?.branchId || ""; }
   function scheduleOf(reservation) { return byId("schedules", reservation.scheduleId); }
+  function branchAmenities(branch) {
+    const names = branch.amenities?.length ? branch.amenities : app.data.areas.filter((area) => area.branchId === branch.id).map((area) => area.name);
+    return names.join(", ");
+  }
+  function branchAdminFor(branchId) {
+    const branch = byId("branches", branchId);
+    return app.data.employees.find((employee) => employee.name === branch?.manager) || app.data.employees.find((employee) => employee.position === "Administrador" && employee.branchId === branchId) || app.data.employees.find((employee) => employee.position === "Administrador");
+  }
+  function generalManager() {
+    return app.data.employees.find((employee) => employee.name === "Valeria Rivas") || app.data.employees.find((employee) => employee.position === "Administrador");
+  }
+  function adminOptionsForBranch(branchId) {
+    const admins = app.data.employees.filter((employee) => employee.position === "Administrador");
+    const branchAdmin = branchAdminFor(branchId);
+    return admins.sort((a, b) => (a.id === branchAdmin?.id ? -1 : b.id === branchAdmin?.id ? 1 : a.name.localeCompare(b.name))).map((employee) => ({ value: employee.id, label: `${employee.name} / ${branchName(employee.branchId)}` }));
+  }
   function money(value) { return `Q${Number(value || 0).toLocaleString("es-GT")}`; }
   function orderSubtotal(order) { return (order.items || []).reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0); }
   function orderTax(order) { return Math.round(orderSubtotal(order) * Number(order.taxRate ?? 0.12)); }
@@ -175,6 +210,7 @@
   }
 
   function dashboard() {
+    if (!isAdmin()) return personalDashboard();
     const scope = dashboardScope();
     const paid = scope.payments.filter((payment) => payment.status === "Pagado");
     const dayIncome = paid.filter((payment) => payment.date === today).reduce((sum, payment) => sum + Number(payment.amount), 0);
@@ -224,6 +260,18 @@
       <section class="panel mt-5 p-5"><div class="section-head"><div><h2>Alertas de mantenimiento proximo</h2><p>Maquinas con mantenimiento programado cerca.</p></div></div><div class="mt-4 grid gap-3 md:grid-cols-3">${upcomingMaintenance(scope.machines).map((machine) => `<div class="info-box"><b>${esc(machine.code)} / ${esc(machine.name)}</b><span>${areaName(machine.areaId)} / proximo ${machine.nextMaintenance}</span></div>`).join("") || `<p class="empty">Sin alertas para esta sucursal.</p>`}</div></section>`;
   }
 
+  function personalDashboard() {
+    if (app.user.role === "client") {
+      const client = byId("clients", app.user.clientId);
+      const membership = window.GymRules.membershipFor(app.data, client?.id);
+      const reservations = app.data.reservations.filter((reservation) => reservation.clientId === client?.id);
+      return page("Dashboard", "Resumen personal de membresia y reservas.") +
+        `<section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Membresia", membership ? planName(membership.planId) : "Sin membresia", membership ? `${membership.startDate} al ${membership.endDate}` : "sin plan activo", "badge-check", "green")}${metric("Reservas activas", reservations.filter((r) => window.GymRules.activeReservationStates.includes(r.status)).length, "pendientes o confirmadas", "calendar-check", "blue")}${metric("Asistencias", reservations.filter((r) => r.status === "Completada").length, "clases completadas", "check-circle-2", "green")}${metric("Estado", client?.status || "Sin cliente", "cuenta personal", "user", "yellow")}</section><section class="panel mt-5 overflow-hidden">${reservationTable(reservations)}</section>`;
+    }
+    const employee = byId("employees", app.user.employeeId);
+    return page("Dashboard", "Resumen individual de trabajo y metricas.") + (employee ? staffMetricDetail(employee, bonusState(employee)) : `<section class="panel empty">No hay empleado vinculado a esta cuenta.</section>`);
+  }
+
   function upcomingMaintenance(machines) {
     return machines.filter((machine) => machine.nextMaintenance <= "2026-10-01").slice(0, 6);
   }
@@ -243,7 +291,7 @@
     const scheduleIds = app.data.schedules.filter((schedule) => schedule.branchId === branch.id).map((schedule) => schedule.id);
     const reservations = app.data.reservations.filter((reservation) => scheduleIds.includes(reservation.scheduleId));
     const income = app.data.payments.filter((payment) => payment.branchId === branch.id && payment.status === "Pagado").reduce((sum, payment) => sum + Number(payment.amount), 0);
-    return `<article class="panel p-5 area-card"><div class="section-head"><div><h2>${esc(branch.code)} / ${esc(branch.name)}</h2><p>${esc(branch.address)}</p></div>${badge(branch.status)}</div><dl class="detail-grid mt-4"><div><dt>Encargado</dt><dd>${esc(branch.manager)}</dd></div><div><dt>Contacto</dt><dd>${esc(branch.phone)}</dd></div><div><dt>Horario</dt><dd>${esc(branch.weekdayHours)}<small>${esc(branch.weekendHours)}</small></dd></div><div><dt>Aforo esperado</dt><dd>${esc(branch.expectedAttendance)}</dd></div><div><dt>Capacidad</dt><dd>${branch.capacity}</dd></div><div><dt>Areas</dt><dd>${areas.length}</dd></div><div><dt>Maquinas</dt><dd>${machines.length}</dd></div><div><dt>Clientes</dt><dd>${clients.length}</dd></div><div><dt>Ingresos</dt><dd>Q${income}</dd></div></dl><div class="mt-4 flex flex-wrap gap-2">${button(icon("eye"), "branch-detail", "icon-only", `data-id="${branch.id}" title="Ver detalle"`)}${button(icon("pencil"), "open-branch", "icon-only", `data-id="${branch.id}" title="Editar"`)}${button(branch.status === "Activa" ? "Desactivar" : "Activar", "toggle-branch", branch.status === "Activa" ? "warning" : "success", `data-id="${branch.id}"`)}${button("Reservas", "branch-reservations", "secondary", `data-id="${branch.id}"`)}</div></article>`;
+    return `<article class="panel p-5 area-card"><div class="section-head"><div><h2>${esc(branch.code)} / ${esc(branch.name)}</h2><p>${esc(branch.address)}</p></div>${badge(branch.status)}</div><dl class="detail-grid mt-4"><div><dt>Encargado</dt><dd>${esc(branch.manager)}</dd></div><div><dt>Contacto</dt><dd>${esc(branch.phone)}</dd></div><div><dt>Horario</dt><dd><span class="block">${esc(branch.weekdayHours)}</span><small>${esc(branch.weekendHours)}</small></dd></div><div><dt>Aforo esperado</dt><dd>${esc(branch.expectedAttendance)}</dd></div><div><dt>Amenidades</dt><dd>${esc(branchAmenities(branch))}</dd></div><div><dt>Capacidad</dt><dd>${branch.capacity}</dd></div><div><dt>Areas</dt><dd>${areas.length}</dd></div><div><dt>Maquinas</dt><dd>${machines.length}</dd></div><div><dt>Clientes</dt><dd>${clients.length}</dd></div><div><dt>Ingresos</dt><dd>Q${income}</dd></div></dl><div class="mt-4 flex flex-wrap gap-2">${button(icon("eye"), "branch-detail", "icon-only", `data-id="${branch.id}" title="Ver detalle"`)}${button(icon("pencil"), "open-branch", "icon-only", `data-id="${branch.id}" title="Editar"`)}${button(branch.status === "Activa" ? "Desactivar" : "Activar", "toggle-branch", branch.status === "Activa" ? "warning" : "success", `data-id="${branch.id}"`)}${button("Reservas", "branch-reservations", "secondary", `data-id="${branch.id}"`)}</div></article>`;
   }
 
   function clients() {
@@ -268,7 +316,8 @@
       const payments = app.data.payments.filter((payment) => payment.clientId === client.id);
       const reservations = app.data.reservations.filter((reservation) => reservation.clientId === client.id).length;
       const lastPayment = payments.sort((a, b) => b.date.localeCompare(a.date))[0];
-      return `<tr><td><b>${esc(client.code)}</b><small>${esc(client.name)}</small></td><td>${esc(client.phone)}<small>${esc(client.email)}</small></td><td>${branchName(client.branchId)}</td><td>${esc(plan?.name || "Sin plan")}<small>${membership?.endDate || "Sin vencimiento"}</small></td><td>${client.joinedAt}<small>Vence ${membership?.endDate || "-"}</small></td><td>${badge(client.status)}</td><td>${reservations}</td><td>${lastPayment ? `${lastPayment.date}<small>${money(lastPayment.amount)} / ${esc(lastPayment.status)}</small>` : "Sin pagos"}</td><td><div class="row-actions">${button(icon("eye"), "client-detail", "icon-only", `data-id="${client.id}" title="Ver"`)}${button(icon("pencil"), "open-client", "icon-only", `data-id="${client.id}" title="Editar"`)}${client.status !== "Activo" ? button("Activar", "client-status", "success", `data-id="${client.id}" data-next="Activo"`) : ""}${client.status !== "Suspendido" ? button("Suspender", "client-status", "warning", `data-id="${client.id}" data-next="Suspendido"`) : ""}${client.status !== "Bloqueado" ? button("Bloquear", "client-status", "danger", `data-id="${client.id}" data-next="Bloqueado"`) : ""}</div></td></tr>`;
+      const adminActions = isAdmin() ? `${button(icon("pencil"), "open-client", "icon-only", `data-id="${client.id}" title="Editar"`)}${client.status !== "Activo" ? button("Activar", "client-status", "success", `data-id="${client.id}" data-next="Activo"`) : ""}${client.status !== "Suspendido" ? button("Suspender", "client-status", "warning", `data-id="${client.id}" data-next="Suspendido"`) : ""}${client.status !== "Bloqueado" ? button("Bloquear", "client-status", "danger", `data-id="${client.id}" data-next="Bloqueado"`) : ""}` : "";
+      return `<tr><td><b>${esc(client.code)}</b><small>${esc(client.name)}</small></td><td>${esc(client.phone)}<small>${esc(client.email)}</small></td><td>${branchName(client.branchId)}</td><td>${esc(plan?.name || "Sin plan")}<small>${membership?.endDate || "Sin vencimiento"}</small></td><td>${client.joinedAt}<small>Vence ${membership?.endDate || "-"}</small></td><td>${badge(client.status)}</td><td>${reservations}</td><td>${lastPayment ? `${lastPayment.date}<small>${money(lastPayment.amount)} / ${esc(lastPayment.status)}</small>` : "Sin pagos"}</td><td><div class="row-actions">${button(icon("eye"), "client-detail", "icon-only", `data-id="${client.id}" title="Ver"`)}${adminActions}</div></td></tr>`;
     }).join("");
     return `<div class="table-wrap"><table><thead><tr><th>Codigo / Nombre</th><th>Contacto</th><th>Sucursal</th><th>Membresia</th><th>Inscripcion / Vencimiento</th><th>Estado</th><th>Reservas</th><th>Ultimo pago</th><th>Acciones</th></tr></thead><tbody>${rows || `<tr><td colspan="9" class="empty">No hay clientes con estos filtros.</td></tr>`}</tbody></table></div>`;
   }
@@ -287,7 +336,8 @@
   }
 
   function employeeRow(employee) {
-    return `<tr><td><b>${esc(employee.code)}</b><small>${esc(employee.name)}</small></td><td>${esc(employee.position)}</td><td>${branchName(employee.branchId)}</td><td>${esc(employee.phone)}<small>${esc(employee.email)}</small></td><td>${employee.hiredAt}</td><td>${money(employee.baseSalary)}</td><td>${esc(employee.workSchedule)}</td><td>${badge(employee.status)}</td><td><div class="row-actions">${button(icon("eye"), "employee-detail", "icon-only", `data-id="${employee.id}" title="Ver"`)}${button(icon("pencil"), "open-employee", "icon-only", `data-id="${employee.id}" title="Editar"`)}${employee.status !== "Activo" ? button("Activar", "employee-status", "success", `data-id="${employee.id}" data-next="Activo"`) : button("Desactivar", "employee-status", "warning", `data-id="${employee.id}" data-next="Inactivo"`)}</div></td></tr>`;
+    const adminActions = isAdmin() ? `${button(icon("pencil"), "open-employee", "icon-only", `data-id="${employee.id}" title="Editar"`)}${employee.status !== "Activo" ? button("Activar", "employee-status", "success", `data-id="${employee.id}" data-next="Activo"`) : button("Desactivar", "employee-status", "warning", `data-id="${employee.id}" data-next="Inactivo"`)}` : "";
+    return `<tr><td><b>${esc(employee.code)}</b><small>${esc(employee.name)}</small></td><td>${esc(employee.position)}</td><td>${branchName(employee.branchId)}</td><td>${esc(employee.phone)}<small>${esc(employee.email)}</small></td><td>${employee.hiredAt}</td><td>${money(employee.baseSalary)}</td><td>${esc(employee.workSchedule)}</td><td>${badge(employee.status)}</td><td><div class="row-actions">${button(icon("eye"), "employee-detail", "icon-only", `data-id="${employee.id}" title="Ver"`)}${adminActions}</div></td></tr>`;
   }
 
   function staffMetrics() {
@@ -305,7 +355,8 @@
 
   function staffMetricDetail(employee, state) {
     const metrics = state.record?.metrics || [];
-    return `<section class="mt-5 grid gap-5 xl:grid-cols-[1.25fr_.75fr]"><article class="grid gap-4 md:grid-cols-2">${metrics.map(metricCard).join("")}</article><article class="panel bonus-card ${state.tone} p-5"><div class="section-head"><div><h2>Resumen de bonificacion</h2><p>${esc(employee.name)} / ${esc(employee.position)}</p></div>${badge(state.approved ? "Bonificacion aprobada" : "Bonificacion no alcanzada")}</div><dl class="detail-grid mt-4"><div><dt>Sueldo base</dt><dd>${money(employee.baseSalary)}</dd></div><div><dt>Bonificacion</dt><dd>${money(state.bonus)}</dd></div><div><dt>Total estimado</dt><dd>${money(state.total)}</dd></div><div><dt>Resultado</dt><dd>${state.approved ? "Bonificacion aprobada" : "Bonificacion no alcanzada"}</dd></div></dl><p class="mt-4 text-sm font-bold text-slate-700">La bonificacion solo se aprueba cuando cumple las dos metricas obligatorias.</p></article></section>
+    const bonusAction = isAdmin() ? `<div class="mt-4">${button(`${icon("pencil")} Modificar bonificacion`, "open-bonus", "ghost", `data-id="${employee.id}"`)}</div>` : "";
+    return `<section class="mt-5 grid gap-5 xl:grid-cols-[1.25fr_.75fr]"><article class="grid gap-4 md:grid-cols-2">${metrics.map(metricCard).join("")}</article><article class="panel bonus-card ${state.tone} p-5"><div class="section-head"><div><h2>Resumen de bonificacion</h2><p>${esc(employee.name)} / ${esc(employee.position)}</p></div>${badge(state.approved ? "Bonificacion aprobada" : "Bonificacion no alcanzada")}</div><dl class="detail-grid mt-4"><div><dt>Sueldo base</dt><dd>${money(employee.baseSalary)}</dd></div><div><dt>Bonificacion</dt><dd>${money(state.bonus)}</dd></div><div><dt>Total estimado</dt><dd>${money(state.total)}</dd></div><div><dt>Resultado</dt><dd>${state.approved ? "Bonificacion aprobada" : "Bonificacion no alcanzada"}</dd></div></dl><p class="mt-4 text-sm font-bold text-slate-700">La bonificacion solo se aprueba cuando cumple las dos metricas obligatorias.</p>${bonusAction}</article></section>
     <section class="panel mt-5 p-5"><div class="section-head"><div><h2>Detalle operativo</h2><p>Datos individuales del periodo ${esc(state.record?.period || "2026-09")}.</p></div></div><dl class="detail-grid mt-4"><div><dt>Sucursal</dt><dd>${branchName(employee.branchId)}</dd></div><div><dt>Clases asignadas</dt><dd>${esc(state.record?.assignedClasses || "No aplica")}</dd></div><div><dt>Clientes atendidos</dt><dd>${state.record?.clientsServed ?? 0}</dd></div><div><dt>Ausencias</dt><dd>${state.record?.absences ?? 0}</dd></div><div><dt>Calificacion promedio</dt><dd>${state.record?.rating ?? "-"}</dd></div><div><dt>Horario</dt><dd>${esc(employee.workSchedule)}</dd></div><div><dt>Sueldo base</dt><dd>${money(employee.baseSalary)}</dd></div><div><dt>Bonificacion posible</dt><dd>${money(employee.bonus)}</dd></div></dl></section>`;
   }
 
@@ -328,17 +379,19 @@
     const suppliers = [...new Set(app.data.purchaseOrders.map((order) => order.supplier))];
     return page("Ordenes de compra", "Gestion de maquinas, repuestos, accesorios, equipos e insumos.", button(`${icon("plus")} Nueva orden de compra`, "open-purchase-order", "primary")) +
       `<section class="panel p-5"><div class="grid gap-3 lg:grid-cols-[1fr_190px_190px_170px_190px]"><input id="poSearch" class="form-control" placeholder="Buscar orden, proveedor, motivo o solicitante..." value="${esc(f.search || "")}"><select id="poBranch" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((b) => ({ value: b.id, label: b.name })), f.branch || "")}</select><select id="poSupplier" class="form-control"><option value="">Todos los proveedores</option>${options(suppliers, f.supplier || "")}</select><input id="poDate" type="date" class="form-control" value="${esc(f.date || "")}"><select id="poStatus" class="form-control"><option value="">Todos los estados</option>${options(["Borrador", "Solicitada", "En revision", "Aprobada", "Rechazada", "Ordenada", "Recibida", "Cancelada"], f.status || "")}</select></div></section>
-      <section class="panel mt-5 overflow-hidden"><div class="table-wrap"><table><thead><tr><th>Orden</th><th>Fecha</th><th>Sucursal / Solicitante</th><th>Proveedor</th><th>Tipo</th><th>Articulos</th><th>Total</th><th>Entrega</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${list.map(orderRow).join("") || `<tr><td colspan="10" class="empty">No hay ordenes con estos filtros.</td></tr>`}</tbody></table></div></section>`;
+      <section class="panel mt-5 overflow-hidden"><div class="table-wrap"><table><thead><tr><th>Orden</th><th>Fecha</th><th>Sucursal / Solicitante</th><th>Proveedor</th><th>Tipo</th><th>Articulos</th><th>Total</th><th>Entrega</th><th>Vistos buenos</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${list.map(orderRow).join("") || `<tr><td colspan="11" class="empty">No hay ordenes con estos filtros.</td></tr>`}</tbody></table></div></section>`;
   }
 
   function orderRow(order) {
     const items = (order.items || []).map((item) => `${item.quantity} x ${item.name}`).join(", ");
-    return `<tr><td><b>${esc(order.number)}</b></td><td>${order.date}</td><td>${branchName(order.branchId)}<small>${employeeName(order.requesterId)}</small></td><td>${esc(order.supplier)}</td><td>${esc(order.purchaseType)}</td><td>${esc(items)}</td><td>${money(orderTotal(order))}<small>Subtotal ${money(orderSubtotal(order))}</small></td><td>${order.expectedDelivery}</td><td>${badge(order.status)}</td><td><div class="row-actions">${button(icon("eye"), "purchase-order-detail", "icon-only", `data-id="${order.id}" title="Ver"`)}${!["Recibida", "Cancelada", "Rechazada"].includes(order.status) ? button(icon("pencil"), "open-purchase-order", "icon-only", `data-id="${order.id}" title="Editar"`) : ""}${purchaseOrderActions(order)}</div></td></tr>`;
+    const approvals = `${order.approvals?.branchAdmin ? "Sucursal OK" : "Sucursal pendiente"} / ${order.approvals?.generalManager ? "Gerencia OK" : "Gerencia pendiente"}`;
+    return `<tr><td><b>${esc(order.number)}</b></td><td>${order.date}</td><td>${branchName(order.branchId)}<small>${employeeName(order.requesterId)}</small></td><td>${esc(order.supplier)}</td><td>${esc(order.purchaseType)}</td><td>${esc(items)}</td><td>${money(orderTotal(order))}<small>Subtotal ${money(orderSubtotal(order))}</small></td><td>${order.expectedDelivery}</td><td>${esc(approvals)}<small>${employeeName(order.branchAdminId || branchAdminFor(order.branchId)?.id)} / ${employeeName(order.generalManagerId || generalManager()?.id)}</small></td><td>${badge(order.status)}</td><td><div class="row-actions">${button(icon("eye"), "purchase-order-detail", "icon-only", `data-id="${order.id}" title="Ver"`)}${!["Recibida", "Cancelada", "Rechazada"].includes(order.status) ? button(icon("pencil"), "open-purchase-order", "icon-only", `data-id="${order.id}" title="Editar"`) : ""}${purchaseOrderActions(order)}</div></td></tr>`;
   }
 
   function purchaseOrderActions(order) {
     const labels = { "Solicitada": "Solicitar", "En revision": "Revisar", "Aprobada": "Aprobar", "Ordenada": "Ordenar", "Recibida": "Marcar recibida", "Rechazada": "Rechazar", "Cancelada": "Cancelar" };
-    return (window.GymRules.purchaseOrderFlow[order.status] || []).map((next) => {
+    const approvalButtons = order.status === "En revision" ? `${!order.approvals?.branchAdmin ? button("Visto bueno sucursal", "purchase-order-approval", "success", `data-id="${order.id}" data-type="branchAdmin"`) : ""}${!order.approvals?.generalManager ? button("Visto bueno gerencia", "purchase-order-approval", "success", `data-id="${order.id}" data-type="generalManager"`) : ""}` : "";
+    return approvalButtons + (window.GymRules.purchaseOrderFlow[order.status] || []).map((next) => {
       const action = next === "Recibida" ? "receive-purchase-order" : "purchase-order-status";
       const variant = next === "Cancelada" || next === "Rechazada" ? "danger" : next === "Aprobada" || next === "Ordenada" ? "success" : "secondary";
       return button(labels[next] || next, action, variant, `data-id="${order.id}" data-next="${next}"`);
@@ -346,10 +399,13 @@
   }
 
   function memberships() {
-    return page("Membresias y planes", "Planes, vigencias, permisos de areas y estados de membresia.", button(`${icon("plus")} Registrar pago`, "open-payment", "primary")) +
+    const clientOnly = app.user.role === "client";
+    const membershipList = clientOnly ? app.data.memberships.filter((membership) => membership.clientId === app.user.clientId) : app.data.memberships;
+    const actions = isAdmin() ? button(`${icon("plus")} Registrar pago`, "open-payment", "primary") : "";
+    return page("Membresias y planes", "Planes, vigencias, permisos de areas y estados de membresia.", actions) +
       `<section class="grid gap-5 xl:grid-cols-[.9fr_1.4fr]">
         <article class="panel p-5"><div class="section-head"><div><h2>Planes disponibles</h2><p>Areas y limites por plan.</p></div></div><div class="mt-4 space-y-3">${app.data.plans.map((plan) => `<div class="plan-card"><div><b>${esc(plan.name)}</b><small>Q${plan.price} / ${plan.durationDays} dias / ${plan.reservationLimit} reservas</small></div>${badge(plan.status)}<p>${plan.areas.map(areaName).join(", ")}</p></div>`).join("")}</div></article>
-        <article class="panel overflow-hidden"><div class="section-head p-5"><div><h2>Membresias asignadas</h2><p>Estados y fechas de vencimiento.</p></div></div><div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Plan</th><th>Vigencia</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${app.data.memberships.map((membership) => `<tr><td>${clientName(membership.clientId)}</td><td>${planName(membership.planId)}</td><td>${membership.startDate} al ${membership.endDate}</td><td>${badge(membership.status)}</td><td><div class="row-actions">${["Pendiente", "Suspendida"].includes(membership.status) ? button("Activar", "membership-status", "success", `data-id="${membership.id}" data-next="Activa"`) : ""}${["Activa", "Proxima a vencer"].includes(membership.status) ? button("Suspender", "membership-status", "warning", `data-id="${membership.id}" data-next="Suspendida"`) : ""}${!["Cancelada", "Vencida"].includes(membership.status) ? button("Cancelar", "membership-status", "danger", `data-id="${membership.id}" data-next="Cancelada"`) : ""}</div></td></tr>`).join("")}</tbody></table></div></article>
+        <article class="panel overflow-hidden"><div class="section-head p-5"><div><h2>${clientOnly ? "Mi membresia" : "Membresias asignadas"}</h2><p>${clientOnly ? "Vigencia y estado de tu plan actual." : "Estados y fechas de vencimiento."}</p></div></div><div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Plan</th><th>Vigencia</th><th>Estado</th>${isAdmin() ? "<th>Acciones</th>" : ""}</tr></thead><tbody>${membershipList.map((membership) => `<tr><td>${clientName(membership.clientId)}</td><td>${planName(membership.planId)}</td><td>${membership.startDate} al ${membership.endDate}</td><td>${badge(membership.status)}</td>${isAdmin() ? `<td><div class="row-actions">${["Pendiente", "Suspendida"].includes(membership.status) ? button("Activar", "membership-status", "success", `data-id="${membership.id}" data-next="Activa"`) : ""}${["Activa", "Proxima a vencer"].includes(membership.status) ? button("Suspender", "membership-status", "warning", `data-id="${membership.id}" data-next="Suspendida"`) : ""}${!["Cancelada", "Vencida"].includes(membership.status) ? button("Cancelar", "membership-status", "danger", `data-id="${membership.id}" data-next="Cancelada"`) : ""}</div></td>` : ""}</tr>`).join("") || `<tr><td colspan="${isAdmin() ? 5 : 4}" class="empty">Sin membresia registrada.</td></tr>`}</tbody></table></div></article>
       </section>`;
   }
 
@@ -361,7 +417,8 @@
     const type = app.filters.inventoryType || "all";
     const areas = filterAreas(branch, term, state);
     const machines = filterMachines(branch, term, state);
-    return page("Areas y maquinas", "Inventario separado de mantenimiento, con filtros y formularios propios.", `${button(`${icon("plus")} Nueva area`, "open-area", "primary")}${button(`${icon("plus")} Nueva maquina`, "open-machine", "secondary")}`) +
+    const actions = isAdmin() ? `${button(`${icon("plus")} Nueva area`, "open-area", "primary")}${button(`${icon("plus")} Nueva maquina`, "open-machine", "secondary")}` : "";
+    return page("Areas y maquinas", "Inventario separado de mantenimiento, con filtros y formularios propios.", actions) +
       `<section class="panel p-5"><div class="grid gap-3 lg:grid-cols-[220px_1fr_180px_220px]"><select id="inventoryBranch" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((b) => ({ value: b.id, label: b.name })), branch)}</select><input id="inventorySearch" class="form-control" placeholder="Buscar area, maquina, codigo, marca..." value="${esc(app.filters.inventorySearch || "")}"><select id="inventoryType" class="form-control">${options([{ value: "all", label: "Todas" }, { value: "areas", label: "Areas" }, { value: "machines", label: "Maquinas" }], type)}</select><select id="inventoryState" class="form-control"><option value="">Todos los estados</option>${options(["Disponible", "Capacidad limitada", "Completa", "Cerrada", "En mantenimiento", "Reservada", "En uso", "Fuera de servicio"], state)}</select></div><div class="tabs mt-4"><button class="${tab === "areas" ? "active" : ""}" data-action="inventory-tab" data-tab="areas">Areas</button><button class="${tab === "machines" ? "active" : ""}" data-action="inventory-tab" data-tab="machines">Maquinas</button></div></section>
       ${type !== "machines" && tab === "areas" ? areaInventory(areas) : ""}
       ${type !== "areas" && tab === "machines" ? machineInventory(machines) : ""}`;
@@ -390,15 +447,17 @@
     return `<section class="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">${areas.map((area) => {
       const schedule = app.data.schedules.find((item) => item.areaId === area.id);
       const availability = schedule ? window.GymRules.availability(app.data, schedule.id) : { available: area.capacity, total: area.capacity, percent: 0 };
-      return `<article class="panel p-5 area-card"><div class="section-head"><div><h2>${esc(area.name)}</h2><p>${branchName(area.branchId)}</p></div>${badge(area.status)}</div><p class="mt-3 text-sm text-slate-600">${esc(area.description)}</p><dl class="detail-grid mt-4"><div><dt>Capacidad</dt><dd>${area.capacity}</dd></div><div><dt>Horario</dt><dd>${esc(area.schedule)}</dd></div><div><dt>Maquinas</dt><dd>${app.data.machines.filter((machine) => machine.areaId === area.id).length}</dd></div><div><dt>Cupos</dt><dd>${availability.available}/${availability.total}</dd></div></dl><div class="mt-4 row-actions">${button(icon("eye"), "area-detail", "icon-only", `data-id="${area.id}" title="Ver"`)}${button(icon("pencil"), "open-area", "icon-only", `data-id="${area.id}" title="Editar"`)}${button("Cambiar estado", "cycle-area-status", "secondary", `data-id="${area.id}"`)}</div></article>`;
+      const adminActions = isAdmin() ? `${button(icon("pencil"), "open-area", "icon-only", `data-id="${area.id}" title="Editar"`)}${button("Cambiar estado", "cycle-area-status", "secondary", `data-id="${area.id}"`)}` : "";
+      return `<article class="panel p-5 area-card"><div class="section-head"><div><h2>${esc(area.name)}</h2><p>${branchName(area.branchId)}</p></div>${badge(area.status)}</div><p class="mt-3 text-sm text-slate-600">${esc(area.description)}</p><dl class="detail-grid mt-4"><div><dt>Capacidad</dt><dd>${area.capacity}</dd></div><div><dt>Horario</dt><dd>${esc(area.schedule)}</dd></div><div><dt>Maquinas</dt><dd>${app.data.machines.filter((machine) => machine.areaId === area.id).length}</dd></div><div><dt>Cupos</dt><dd>${availability.available}/${availability.total}</dd></div></dl><div class="mt-4 row-actions">${button(icon("eye"), "area-detail", "icon-only", `data-id="${area.id}" title="Ver"`)}${adminActions}</div></article>`;
     }).join("") || `<article class="panel empty">No hay areas con estos filtros.</article>`}</section>`;
   }
 
   function machineInventory(machines) {
-    return `<section class="panel mt-5 overflow-hidden"><div class="table-wrap"><table><thead><tr><th>Codigo</th><th>Maquina</th><th>Tipo</th><th>Sucursal</th><th>Area</th><th>Marca / Modelo</th><th>Capacidad</th><th>Mantenimiento</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${machines.map((machine) => `<tr><td><b>${esc(machine.code)}</b></td><td>${esc(machine.name)}</td><td>${esc(machine.type)}</td><td>${branchName(branchOfMachine(machine))}</td><td>${areaName(machine.areaId)}</td><td>${esc(machine.brand)}<small>${esc(machine.model)}</small></td><td>${machine.simultaneousCapacity}</td><td>${machine.lastMaintenance}<small>Proximo ${machine.nextMaintenance}</small></td><td>${badge(machine.status)}</td><td><div class="row-actions">${button(icon("eye"), "machine-detail", "icon-only", `data-id="${machine.id}" title="Ver"`)}${button(icon("pencil"), "open-machine", "icon-only", `data-id="${machine.id}" title="Editar"`)}${machineActions(machine)}${button("Ver mantenimientos", "machine-maintenance", "secondary", `data-id="${machine.id}"`)}</div></td></tr>`).join("") || `<tr><td colspan="10" class="empty">No hay maquinas con estos filtros.</td></tr>`}</tbody></table></div></section>`;
+    return `<section class="panel mt-5 overflow-hidden"><div class="table-wrap"><table><thead><tr><th>Codigo</th><th>Maquina</th><th>Tipo</th><th>Sucursal</th><th>Area</th><th>Marca / Modelo</th><th>Capacidad</th><th>Mantenimiento</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${machines.map((machine) => { const adminActions = isAdmin() ? `${button(icon("pencil"), "open-machine", "icon-only", `data-id="${machine.id}" title="Editar"`)}${machineActions(machine)}${button("Ver mantenimientos", "machine-maintenance", "secondary", `data-id="${machine.id}"`)}` : ""; return `<tr><td><b>${esc(machine.code)}</b></td><td>${esc(machine.name)}</td><td>${esc(machine.type)}</td><td>${branchName(branchOfMachine(machine))}</td><td>${areaName(machine.areaId)}</td><td>${esc(machine.brand)}<small>${esc(machine.model)}</small></td><td>${machine.simultaneousCapacity}</td><td>${machine.lastMaintenance}<small>Proximo ${machine.nextMaintenance}</small></td><td>${badge(machine.status)}</td><td><div class="row-actions">${button(icon("eye"), "machine-detail", "icon-only", `data-id="${machine.id}" title="Ver"`)}${adminActions}</div></td></tr>`; }).join("") || `<tr><td colspan="10" class="empty">No hay maquinas con estos filtros.</td></tr>`}</tbody></table></div></section>`;
   }
 
   function machineActions(machine) {
+    if (!isAdmin()) return "";
     const allowed = window.GymRules.machineFlow[machine.status] || [];
     return allowed.slice(0, 2).map((next) => button(next, "machine-status", next === "En mantenimiento" ? "warning" : "secondary", `data-id="${machine.id}" data-next="${next}"`)).join("");
   }
@@ -430,6 +489,9 @@
   }
 
   function reservationActions(reservation) {
+    if (app.user.role === "client") {
+      return ["Pendiente", "Confirmada"].includes(reservation.status) ? button("Cancelar", "cancel-reservation", "danger", `data-id="${reservation.id}" data-next="Cancelada"`) : "";
+    }
     const allowed = window.GymRules.reservationFlow[reservation.status] || [];
     return allowed.map((next) => {
       const variant = next === "Cancelada" || next === "Rechazada" ? "danger" : next === "Confirmada" || next === "Completada" ? "success" : "secondary";
@@ -567,7 +629,7 @@
     const selectedManager = employees.some((employee) => employee.name === branch.manager) ? branch.manager : employees[0]?.name || branch.manager || "";
     const managerOptions = employees.map((employee) => ({ value: employee.name, label: `${employee.name} / ${employee.position}` }));
     if (branch.manager && !employees.some((employee) => employee.name === branch.manager)) managerOptions.unshift({ value: branch.manager, label: `${branch.manager} / encargado actual` });
-    showModal(branch.id ? "Editar sucursal" : "Nueva sucursal", `<form id="branchForm" data-id="${esc(branch.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Codigo</span><input id="branchCode" class="form-control" value="${esc(branch.code || "")}" required></label><label class="form-field"><span>Nombre</span><input id="branchName" class="form-control" value="${esc(branch.name || "")}" required></label><label class="form-field md:col-span-2"><span>Direccion</span><input id="branchAddress" class="form-control" value="${esc(branch.address || "")}" required></label><label class="form-field"><span>Telefono</span><input id="branchPhone" class="form-control" value="${esc(branch.phone || "")}"></label><label class="form-field"><span>Correo</span><input id="branchEmail" class="form-control" type="email" value="${esc(branch.email || "")}"></label><label class="form-field"><span>Encargado</span><select id="branchManager" class="form-control">${options(managerOptions, selectedManager)}</select></label><label class="form-field"><span>Capacidad maxima</span><input id="branchCapacity" type="number" class="form-control" value="${esc(branch.capacity || 100)}"></label><label class="form-field"><span>Horario lunes-viernes</span><input id="branchWeekdayHours" class="form-control" value="${esc(branch.weekdayHours || "Lunes-viernes 04:00-22:00")}"></label><label class="form-field"><span>Horario sabado-domingo</span><input id="branchWeekendHours" class="form-control" value="${esc(branch.weekendHours || "Sabados y domingos 06:00-14:00")}"></label><label class="form-field"><span>Aforo esperado</span><input id="branchExpectedAttendance" class="form-control" value="${esc(branch.expectedAttendance || "75-100 personas, con expectativa de crecimiento")}"></label><label class="form-field md:col-span-2"><span>Estado</span><select id="branchStatus" class="form-control">${options(["Activa", "Inactiva", "En mantenimiento", "Cerrada temporalmente"], branch.status || "Activa")}</select></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar sucursal</button></form>`);
+    showModal(branch.id ? "Editar sucursal" : "Nueva sucursal", `<form id="branchForm" data-id="${esc(branch.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Codigo</span><input id="branchCode" class="form-control" value="${esc(branch.code || "")}" required></label><label class="form-field"><span>Nombre</span><input id="branchName" class="form-control" value="${esc(branch.name || "")}" required></label><label class="form-field md:col-span-2"><span>Direccion</span><input id="branchAddress" class="form-control" value="${esc(branch.address || "")}" required></label><label class="form-field"><span>Telefono</span><input id="branchPhone" class="form-control" value="${esc(branch.phone || "")}"></label><label class="form-field"><span>Correo</span><input id="branchEmail" class="form-control" type="email" value="${esc(branch.email || "")}"></label><label class="form-field"><span>Encargado</span><select id="branchManager" class="form-control">${options(managerOptions, selectedManager)}</select></label><label class="form-field"><span>Capacidad maxima</span><input id="branchCapacity" type="number" class="form-control" value="${esc(branch.capacity || 100)}"></label><label class="form-field"><span>Horario lunes-viernes</span><input id="branchWeekdayHours" class="form-control" value="${esc(branch.weekdayHours || "Lunes-viernes 04:00-22:00")}"></label><label class="form-field"><span>Horario sabado-domingo</span><input id="branchWeekendHours" class="form-control" value="${esc(branch.weekendHours || "Sabados y domingos 06:00-14:00")}"></label><label class="form-field"><span>Aforo esperado</span><input id="branchExpectedAttendance" class="form-control" value="${esc(branch.expectedAttendance || "75-100 personas, con expectativa de crecimiento")}"></label><label class="form-field md:col-span-2"><span>Amenidades / areas</span><textarea id="branchAmenities" class="form-control" rows="3">${esc(branchAmenities(branch) || "Cardio, Pesas, Vestidores")}</textarea></label><label class="form-field md:col-span-2"><span>Estado</span><select id="branchStatus" class="form-control">${options(["Activa", "Inactiva", "En mantenimiento", "Cerrada temporalmente"], branch.status || "Activa")}</select></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar sucursal</button></form>`);
   }
 
   function clientForm(client = {}) {
@@ -578,9 +640,16 @@
     showModal(employee.id ? "Editar empleado" : "Nuevo empleado", `<form id="employeeForm" data-id="${esc(employee.id || "")}" class="grid gap-4 md:grid-cols-2" novalidate><label class="form-field"><span>Codigo</span><input id="employeeCode" class="form-control" value="${esc(employee.code || `EMP-${String(app.data.employees.length + 1).padStart(3, "0")}`)}" required></label><label class="form-field"><span>Nombre completo</span><input id="employeeName" class="form-control" value="${esc(employee.name || "")}" required></label><label class="form-field"><span>Puesto</span><select id="employeePosition" class="form-control">${options(["Recepcionista", "Coach", "Administrador", "Mantenimiento"], employee.position || "Recepcionista")}</select></label><label class="form-field"><span>Sucursal</span><select id="employeeBranch" class="form-control">${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), employee.branchId || "b1")}</select></label><label class="form-field"><span>Telefono</span><input id="employeePhone" class="form-control" value="${esc(employee.phone || "")}"></label><label class="form-field"><span>Correo</span><input id="employeeEmail" type="email" class="form-control" value="${esc(employee.email || "")}"></label><label class="form-field"><span>Fecha de contratacion</span><input id="employeeHired" type="date" class="form-control" value="${esc(employee.hiredAt || today)}"></label><label class="form-field"><span>Salario base</span><input id="employeeSalary" type="number" class="form-control" value="${esc(employee.baseSalary || 3600)}"></label><label class="form-field"><span>Bonificacion posible</span><input id="employeeBonus" type="number" class="form-control" value="${esc(employee.bonus || 500)}"></label><label class="form-field"><span>Estado</span><select id="employeeStatus" class="form-control">${options(["Activo", "Inactivo", "Suspendido", "Vacaciones"], employee.status || "Activo")}</select></label><label class="form-field md:col-span-2"><span>Horario laboral</span><input id="employeeSchedule" class="form-control" value="${esc(employee.workSchedule || "Lun-Vie 08:00-16:00")}"></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar empleado</button></form>`);
   }
 
+  function bonusForm(employee) {
+    if (!isAdmin()) return toast("Solo administracion puede modificar bonificaciones.", "error");
+    showModal("Modificar bonificacion", `<form id="bonusForm" data-id="${esc(employee.id)}" class="grid gap-4 md:grid-cols-2"><div class="info-box md:col-span-2"><b>${esc(employee.name)} / ${esc(employee.position)}</b><span>${branchName(employee.branchId)}</span></div><label class="form-field"><span>Sueldo base</span><input id="bonusBaseSalary" type="number" class="form-control" value="${esc(employee.baseSalary || 0)}"></label><label class="form-field"><span>Bonificacion posible</span><input id="bonusAmount" type="number" class="form-control" value="${esc(employee.bonus || 0)}"></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar bonificacion</button></form>`);
+  }
+
   function purchaseOrderForm(order = {}) {
     const first = order.items?.[0] || {};
-    showModal(order.id ? "Editar orden de compra" : "Nueva orden de compra", `<form id="purchaseOrderForm" data-id="${esc(order.id || "")}" class="grid gap-4 md:grid-cols-2" novalidate><label class="form-field"><span>Numero de orden</span><input id="poNumberInput" class="form-control" value="${esc(order.number || `OC-2026-${String(app.data.purchaseOrders.length + 1).padStart(3, "0")}`)}" required></label><label class="form-field"><span>Fecha</span><input id="poDateInput" type="date" class="form-control" value="${esc(order.date || today)}"></label><label class="form-field"><span>Sucursal solicitante</span><select id="poBranchInput" class="form-control">${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), order.branchId || "b1")}</select></label><label class="form-field"><span>Empleado solicitante</span><select id="poRequesterInput" class="form-control">${options(app.data.employees.map((employee) => ({ value: employee.id, label: `${employee.name} / ${employee.position}` })), order.requesterId || app.data.employees[0]?.id)}</select></label><label class="form-field"><span>Proveedor</span><input id="poSupplierInput" class="form-control" value="${esc(order.supplier || "Proveedor demo")}"></label><label class="form-field"><span>Tipo de compra</span><select id="poTypeInput" class="form-control">${options(["Nueva maquina", "Repuesto", "Accesorio", "Equipo de oficina", "Insumo", "Otro"], order.purchaseType || "Nueva maquina")}</select></label><label class="form-field"><span>Articulo principal</span><input id="poItemName" class="form-control" value="${esc(first.name || "")}" required></label><label class="form-field"><span>Cantidad</span><input id="poItemQty" type="number" class="form-control" value="${esc(first.quantity || 1)}"></label><label class="form-field"><span>Precio unitario</span><input id="poItemPrice" type="number" class="form-control" value="${esc(first.unitPrice || 1000)}"></label><label class="form-field"><span>Impuesto</span><input id="poTaxRate" type="number" step="0.01" class="form-control" value="${esc(order.taxRate ?? 0.12)}"></label><label class="form-field"><span>Entrega esperada</span><input id="poExpectedInput" type="date" class="form-control" value="${esc(order.expectedDelivery || "2026-09-30")}"></label><label class="form-field"><span>Estado</span><select id="poStatusInput" class="form-control">${options(["Borrador", "Solicitada", "En revision", "Aprobada", "Rechazada", "Ordenada", "Recibida", "Cancelada"], order.status || "Borrador")}</select></label><label class="form-field md:col-span-2"><span>Motivo de compra</span><textarea id="poReasonInput" class="form-control" rows="2">${esc(order.reason || "")}</textarea></label><label class="form-field md:col-span-2"><span>Observaciones</span><textarea id="poObsInput" class="form-control" rows="2">${esc(order.observations || "")}</textarea></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar orden de compra</button></form>`);
+    const selectedBranch = order.branchId || "b1";
+    const admins = app.data.employees.filter((employee) => employee.position === "Administrador");
+    showModal(order.id ? "Editar orden de compra" : "Nueva orden de compra", `<form id="purchaseOrderForm" data-id="${esc(order.id || "")}" class="grid gap-4 md:grid-cols-2" novalidate><label class="form-field"><span>Numero de orden</span><input id="poNumberInput" class="form-control" value="${esc(order.number || `OC-2026-${String(app.data.purchaseOrders.length + 1).padStart(3, "0")}`)}" required></label><label class="form-field"><span>Fecha</span><input id="poDateInput" type="date" class="form-control" value="${esc(order.date || today)}"></label><label class="form-field"><span>Sucursal solicitante</span><select id="poBranchInput" class="form-control">${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), selectedBranch)}</select></label><label class="form-field"><span>Empleado solicitante</span><select id="poRequesterInput" class="form-control">${options(app.data.employees.map((employee) => ({ value: employee.id, label: `${employee.name} / ${employee.position}` })), order.requesterId || app.data.employees[0]?.id)}</select></label><label class="form-field"><span>Administrador de sucursal</span><select id="poBranchAdminInput" class="form-control">${options(adminOptionsForBranch(selectedBranch), order.branchAdminId || branchAdminFor(selectedBranch)?.id)}</select></label><label class="form-field"><span>Gerente general</span><select id="poGeneralManagerInput" class="form-control">${options(admins.map((employee) => ({ value: employee.id, label: employee.name })), order.generalManagerId || generalManager()?.id)}</select></label><label class="form-field"><span>Proveedor</span><input id="poSupplierInput" class="form-control" value="${esc(order.supplier || "Proveedor demo")}"></label><label class="form-field"><span>Tipo de compra</span><select id="poTypeInput" class="form-control">${options(["Nueva maquina", "Repuesto", "Accesorio", "Equipo de oficina", "Insumo", "Otro"], order.purchaseType || "Nueva maquina")}</select></label><label class="form-field"><span>Articulo principal</span><input id="poItemName" class="form-control" value="${esc(first.name || "")}" required></label><label class="form-field"><span>Cantidad</span><input id="poItemQty" type="number" class="form-control" value="${esc(first.quantity || 1)}"></label><label class="form-field"><span>Precio unitario</span><input id="poItemPrice" type="number" class="form-control" value="${esc(first.unitPrice || 1000)}"></label><label class="form-field"><span>Impuesto</span><input id="poTaxRate" type="number" step="0.01" class="form-control" value="${esc(order.taxRate ?? 0.12)}"></label><label class="form-field"><span>Entrega esperada</span><input id="poExpectedInput" type="date" class="form-control" value="${esc(order.expectedDelivery || "2026-09-30")}"></label><label class="form-field"><span>Estado</span><select id="poStatusInput" class="form-control">${options(["Borrador", "Solicitada", "En revision", "Rechazada", "Ordenada", "Recibida", "Cancelada"], order.status || "Borrador")}</select></label><label class="form-field md:col-span-2"><span>Motivo de compra</span><textarea id="poReasonInput" class="form-control" rows="2">${esc(order.reason || "")}</textarea></label><label class="form-field md:col-span-2"><span>Observaciones</span><textarea id="poObsInput" class="form-control" rows="2">${esc(order.observations || "")}</textarea></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar orden de compra</button></form>`);
   }
 
   function receivePurchaseOrderForm(order) {
@@ -620,13 +689,14 @@
 
   function handleSubmit(event) {
     const form = event.target;
-    const managed = ["reservationForm", "branchForm", "clientForm", "employeeForm", "areaForm", "machineForm", "maintenanceForm", "finishMaintenanceForm", "paymentForm", "purchaseOrderForm", "receivePurchaseOrderForm"];
+    const managed = ["reservationForm", "branchForm", "clientForm", "employeeForm", "bonusForm", "areaForm", "machineForm", "maintenanceForm", "finishMaintenanceForm", "paymentForm", "purchaseOrderForm", "receivePurchaseOrderForm"];
     if (!managed.includes(form.id)) return;
     event.preventDefault();
     if (form.id === "reservationForm") return submitReservation();
     if (form.id === "branchForm") return submitBranch(form);
     if (form.id === "clientForm") return submitClient(form);
     if (form.id === "employeeForm") return submitEmployee(form);
+    if (form.id === "bonusForm") return submitBonus(form);
     if (form.id === "areaForm") return submitArea(form);
     if (form.id === "machineForm") return submitMachine(form);
     if (form.id === "maintenanceForm") return submitMaintenance(form);
@@ -647,10 +717,19 @@
     if (!code || !$("#branchName").value.trim()) return toast("Codigo y nombre son obligatorios.", "error");
     if (app.data.branches.some((branch) => branch.code.toLowerCase() === code.toLowerCase() && branch.id !== form.dataset.id)) return toast("El codigo de sucursal ya existe.", "error");
     const branch = form.dataset.id ? byId("branches", form.dataset.id) : { id: uid("b") };
-    Object.assign(branch, { code, name: $("#branchName").value.trim(), address: $("#branchAddress").value.trim(), phone: $("#branchPhone").value.trim(), email: $("#branchEmail").value.trim(), manager: $("#branchManager").value, opens: "04:00", closes: "22:00", weekdayHours: $("#branchWeekdayHours").value.trim(), weekendHours: $("#branchWeekendHours").value.trim(), expectedAttendance: $("#branchExpectedAttendance").value.trim(), capacity: Number($("#branchCapacity").value), status: $("#branchStatus").value });
+    const amenities = $("#branchAmenities").value.split(",").map((item) => item.trim()).filter(Boolean);
+    Object.assign(branch, { code, name: $("#branchName").value.trim(), address: $("#branchAddress").value.trim(), phone: $("#branchPhone").value.trim(), email: $("#branchEmail").value.trim(), manager: $("#branchManager").value, opens: "04:00", closes: "22:00", weekdayHours: $("#branchWeekdayHours").value.trim(), weekendHours: $("#branchWeekendHours").value.trim(), expectedAttendance: $("#branchExpectedAttendance").value.trim(), amenities, capacity: Number($("#branchCapacity").value), status: $("#branchStatus").value });
     if (!form.dataset.id) app.data.branches.unshift(branch);
+    syncBranchAmenities(branch.id, amenities);
     window.GymReservations.audit(app.data, app.user, "Sucursales", form.dataset.id ? "Editar sucursal" : "Crear sucursal", branch.name);
     save(); closeModal(); render(); toast("Sucursal guardada.");
+  }
+
+  function syncBranchAmenities(branchId, amenities) {
+    amenities.forEach((name) => {
+      const exists = app.data.areas.some((area) => area.branchId === branchId && area.name.toLowerCase() === name.toLowerCase());
+      if (!exists) app.data.areas.push({ id: uid("a"), name, description: `Amenidad de sucursal: ${name}.`, branchId, capacity: 10, schedule: "04:00-22:00", status: "Disponible" });
+    });
   }
 
   function submitClient(form) {
@@ -681,7 +760,17 @@
     save(); closeModal(); render(); toast("Empleado guardado.");
   }
 
+  function submitBonus(form) {
+    if (!isAdmin()) return toast("Solo administracion puede modificar bonificaciones.", "error");
+    const employee = byId("employees", form.dataset.id);
+    employee.baseSalary = Number($("#bonusBaseSalary").value);
+    employee.bonus = Number($("#bonusAmount").value);
+    window.GymReservations.audit(app.data, app.user, "Metricas del personal", "Modificar bonificacion", employee.name);
+    save(); closeModal(); render(); toast("Bonificacion actualizada.");
+  }
+
   function submitArea(form) {
+    if (!isAdmin()) return toast("Solo administracion puede guardar areas.", "error");
     const area = form.dataset.id ? byId("areas", form.dataset.id) : { id: uid("a") };
     Object.assign(area, { name: $("#areaName").value.trim(), branchId: $("#areaBranch").value, description: $("#areaDescription").value.trim(), capacity: Number($("#areaCapacity").value), schedule: `${$("#areaOpens").value}-${$("#areaCloses").value}`, status: $("#areaStatus").value });
     if (!area.name) return toast("El nombre del area es obligatorio.", "error");
@@ -691,6 +780,7 @@
   }
 
   function submitMachine(form) {
+    if (!isAdmin()) return toast("Solo administracion puede guardar maquinas.", "error");
     const code = $("#machineCode").value.trim();
     if (app.data.machines.some((machine) => machine.code.toLowerCase() === code.toLowerCase() && machine.id !== form.dataset.id)) return toast("El codigo de maquina ya existe.", "error");
     const machine = form.dataset.id ? byId("machines", form.dataset.id) : { id: uid("ma"), acquiredAt: today };
@@ -723,6 +813,7 @@
   }
 
   function submitPayment() {
+    if (!isAdmin()) return toast("Solo administracion puede registrar pagos.", "error");
     app.data.payments.unshift({ id: uid("pay"), clientId: $("#paymentClient").value, branchId: $("#paymentBranch").value, planId: $("#paymentPlan").value, amount: Number($("#paymentAmount").value), date: $("#paymentDate").value, method: $("#paymentMethod").value, receipt: $("#paymentReceipt").value, status: $("#paymentStatus").value });
     window.GymReservations.audit(app.data, app.user, "Pagos", "Registrar pago", $("#paymentReceipt").value);
     save(); closeModal(); render(); toast("Pago registrado.");
@@ -733,8 +824,9 @@
     const number = $("#poNumberInput").value.trim();
     if (!number || !$("#poItemName").value.trim()) return toast("Numero de orden y articulo son obligatorios.", "error");
     if (app.data.purchaseOrders.some((order) => order.number.toLowerCase() === number.toLowerCase() && order.id !== id)) return toast("El numero de orden ya existe.", "error");
-    const order = id ? byId("purchaseOrders", id) : { id: uid("po"), reception: null };
-    Object.assign(order, { number, date: $("#poDateInput").value, branchId: $("#poBranchInput").value, requesterId: $("#poRequesterInput").value, supplier: $("#poSupplierInput").value.trim(), purchaseType: $("#poTypeInput").value, items: [{ name: $("#poItemName").value.trim(), quantity: Number($("#poItemQty").value), unitPrice: Number($("#poItemPrice").value) }], taxRate: Number($("#poTaxRate").value), reason: $("#poReasonInput").value.trim(), expectedDelivery: $("#poExpectedInput").value, observations: $("#poObsInput").value.trim(), status: $("#poStatusInput").value });
+    const order = id ? byId("purchaseOrders", id) : { id: uid("po"), reception: null, approvals: { branchAdmin: null, generalManager: null } };
+    Object.assign(order, { number, date: $("#poDateInput").value, branchId: $("#poBranchInput").value, requesterId: $("#poRequesterInput").value, branchAdminId: $("#poBranchAdminInput").value, generalManagerId: $("#poGeneralManagerInput").value, supplier: $("#poSupplierInput").value.trim(), purchaseType: $("#poTypeInput").value, items: [{ name: $("#poItemName").value.trim(), quantity: Number($("#poItemQty").value), unitPrice: Number($("#poItemPrice").value) }], taxRate: Number($("#poTaxRate").value), reason: $("#poReasonInput").value.trim(), expectedDelivery: $("#poExpectedInput").value, observations: $("#poObsInput").value.trim(), status: $("#poStatusInput").value });
+    order.approvals ||= { branchAdmin: null, generalManager: null };
     if (!id) app.data.purchaseOrders.unshift(order);
     window.GymReservations.audit(app.data, app.user, "Ordenes de compra", id ? "Editar orden" : "Crear orden", order.number);
     save(); closeModal(); render(); toast("Orden de compra guardada.");
@@ -774,10 +866,11 @@
     if (action === "open-branch") return branchForm(id ? byId("branches", id) : {});
     if (action === "open-client") return clientForm(id ? byId("clients", id) : {});
     if (action === "open-employee") return employeeForm(id ? byId("employees", id) : {});
-    if (action === "open-area") return areaForm(id ? byId("areas", id) : {});
-    if (action === "open-machine") return machineForm(id ? byId("machines", id) : {});
+    if (action === "open-bonus") return bonusForm(byId("employees", id));
+    if (action === "open-area") return isAdmin() ? areaForm(id ? byId("areas", id) : {}) : toast("Solo administracion puede editar areas.", "error");
+    if (action === "open-machine") return isAdmin() ? machineForm(id ? byId("machines", id) : {}) : toast("Solo administracion puede editar maquinas.", "error");
     if (action === "open-maintenance") return maintenanceForm(id ? byId("maintenance", id) : {});
-    if (action === "open-payment") return paymentForm();
+    if (action === "open-payment") return isAdmin() ? paymentForm() : toast("Solo administracion puede registrar pagos.", "error");
     if (action === "open-purchase-order") return purchaseOrderForm(id ? byId("purchaseOrders", id) : {});
     if (action === "go-staff-metrics") { app.view = "staffMetrics"; return render(); }
     if (action === "inventory-tab") { app.filters.inventoryTab = el.dataset.tab; return render(); }
@@ -802,6 +895,7 @@
     if (action === "finish-maintenance") return finishMaintenanceForm(byId("maintenance", id));
     if (action === "cancel-maintenance") return cancelMaintenance(id);
     if (action === "purchase-order-detail") return purchaseOrderDetail(id);
+    if (action === "purchase-order-approval") return approvePurchaseOrder(id, el.dataset.type);
     if (action === "purchase-order-status") return changePurchaseOrderStatus(id, el.dataset.next);
     if (action === "receive-purchase-order") return receivePurchaseOrderForm(byId("purchaseOrders", id));
     if (action === "print-report") return window.print();
@@ -833,7 +927,7 @@
     const scheduleIds = app.data.schedules.filter((schedule) => schedule.branchId === id).map((schedule) => schedule.id);
     const reservations = app.data.reservations.filter((reservation) => scheduleIds.includes(reservation.scheduleId));
     const income = app.data.payments.filter((payment) => payment.branchId === id && payment.status === "Pagado").reduce((sum, payment) => sum + Number(payment.amount), 0);
-    showModal("Detalle de sucursal", `<dl class="detail-grid"><div><dt>Codigo</dt><dd>${esc(branch.code)}</dd></div><div><dt>Estado</dt><dd>${badge(branch.status)}</dd></div><div><dt>Encargado</dt><dd>${esc(branch.manager)}</dd></div><div><dt>Ingresos</dt><dd>Q${income}</dd></div><div><dt>Horario lunes-viernes</dt><dd>${esc(branch.weekdayHours)}</dd></div><div><dt>Horario sabado-domingo</dt><dd>${esc(branch.weekendHours)}</dd></div><div><dt>Aforo esperado</dt><dd>${esc(branch.expectedAttendance)}</dd></div><div><dt>Capacidad</dt><dd>${branch.capacity}</dd></div><div><dt>Areas</dt><dd>${areas.length}</dd></div><div><dt>Maquinas</dt><dd>${machines.length}</dd></div><div><dt>Clientes</dt><dd>${clients.length}</dd></div><div><dt>Reservas</dt><dd>${reservations.length}</dd></div></dl>`);
+    showModal("Detalle de sucursal", `<dl class="detail-grid"><div><dt>Codigo</dt><dd>${esc(branch.code)}</dd></div><div><dt>Estado</dt><dd>${badge(branch.status)}</dd></div><div><dt>Encargado</dt><dd>${esc(branch.manager)}</dd></div><div><dt>Ingresos</dt><dd>Q${income}</dd></div><div><dt>Horario lunes-viernes</dt><dd>${esc(branch.weekdayHours)}</dd></div><div><dt>Horario sabado-domingo</dt><dd>${esc(branch.weekendHours)}</dd></div><div><dt>Aforo esperado</dt><dd>${esc(branch.expectedAttendance)}</dd></div><div><dt>Amenidades</dt><dd>${esc(branchAmenities(branch))}</dd></div><div><dt>Capacidad</dt><dd>${branch.capacity}</dd></div><div><dt>Areas</dt><dd>${areas.length}</dd></div><div><dt>Maquinas</dt><dd>${machines.length}</dd></div><div><dt>Clientes</dt><dd>${clients.length}</dd></div><div><dt>Reservas</dt><dd>${reservations.length}</dd></div></dl>`);
   }
 
   function toggleBranch(id) {
@@ -865,6 +959,7 @@
   }
 
   function setClientStatus(id, next) {
+    if (!isAdmin()) return toast("Solo administracion puede cambiar estados de clientes.", "error");
     const client = byId("clients", id);
     client.status = next;
     save(); render(); toast(`Cliente ${next.toLowerCase()}.`);
@@ -877,6 +972,7 @@
   }
 
   function setEmployeeStatus(id, next) {
+    if (!isAdmin()) return toast("Solo administracion puede cambiar estados de empleados.", "error");
     const employee = byId("employees", id);
     employee.status = next;
     save(); render(); toast(`Empleado ${next.toLowerCase()}.`);
@@ -885,10 +981,23 @@
   function purchaseOrderDetail(id) {
     const order = byId("purchaseOrders", id);
     const rows = (order.items || []).map((item) => [item.name, item.quantity, money(item.unitPrice), money(item.quantity * item.unitPrice)]);
-    showModal("Detalle de orden de compra", `<dl class="detail-grid"><div><dt>Numero</dt><dd>${esc(order.number)}</dd></div><div><dt>Fecha</dt><dd>${order.date}</dd></div><div><dt>Sucursal</dt><dd>${branchName(order.branchId)}</dd></div><div><dt>Solicitante</dt><dd>${employeeName(order.requesterId)}</dd></div><div><dt>Proveedor</dt><dd>${esc(order.supplier)}</dd></div><div><dt>Tipo</dt><dd>${esc(order.purchaseType)}</dd></div><div><dt>Entrega esperada</dt><dd>${order.expectedDelivery}</dd></div><div><dt>Estado</dt><dd>${badge(order.status)}</dd></div><div><dt>Subtotal</dt><dd>${money(orderSubtotal(order))}</dd></div><div><dt>Impuestos</dt><dd>${money(orderTax(order))}</dd></div><div><dt>Total</dt><dd>${money(orderTotal(order))}</dd></div><div><dt>Motivo</dt><dd>${esc(order.reason)}</dd></div></dl><h3 class="mt-5 font-black">Articulos</h3>${simpleTable(["Articulo", "Cantidad", "Precio unitario", "Subtotal"], rows)}<h3 class="mt-5 font-black">Observaciones</h3><p class="mt-2 text-sm text-slate-600">${esc(order.observations || "Sin observaciones.")}</p>${order.reception ? `<h3 class="mt-5 font-black">Recepcion</h3><dl class="detail-grid mt-3"><div><dt>Fecha</dt><dd>${order.reception.receivedAt}</dd></div><div><dt>Entrega</dt><dd>${order.reception.complete}</dd></div><div><dt>Inventario</dt><dd>${order.reception.inventory ? "Si" : "No"}</dd></div><div><dt>Observaciones</dt><dd>${esc(order.reception.observations)}</dd></div></dl>` : ""}`);
+    showModal("Detalle de orden de compra", `<dl class="detail-grid"><div><dt>Numero</dt><dd>${esc(order.number)}</dd></div><div><dt>Fecha</dt><dd>${order.date}</dd></div><div><dt>Sucursal</dt><dd>${branchName(order.branchId)}</dd></div><div><dt>Solicitante</dt><dd>${employeeName(order.requesterId)}</dd></div><div><dt>Administrador sucursal</dt><dd>${employeeName(order.branchAdminId || branchAdminFor(order.branchId)?.id)}<small>${order.approvals?.branchAdmin ? `Visto bueno ${order.approvals.branchAdmin.at}` : "Pendiente"}</small></dd></div><div><dt>Gerente general</dt><dd>${employeeName(order.generalManagerId || generalManager()?.id)}<small>${order.approvals?.generalManager ? `Visto bueno ${order.approvals.generalManager.at}` : "Pendiente"}</small></dd></div><div><dt>Proveedor</dt><dd>${esc(order.supplier)}</dd></div><div><dt>Tipo</dt><dd>${esc(order.purchaseType)}</dd></div><div><dt>Entrega esperada</dt><dd>${order.expectedDelivery}</dd></div><div><dt>Estado</dt><dd>${badge(order.status)}</dd></div><div><dt>Subtotal</dt><dd>${money(orderSubtotal(order))}</dd></div><div><dt>Impuestos</dt><dd>${money(orderTax(order))}</dd></div><div><dt>Total</dt><dd>${money(orderTotal(order))}</dd></div><div><dt>Motivo</dt><dd>${esc(order.reason)}</dd></div></dl><h3 class="mt-5 font-black">Articulos</h3>${simpleTable(["Articulo", "Cantidad", "Precio unitario", "Subtotal"], rows)}<h3 class="mt-5 font-black">Observaciones</h3><p class="mt-2 text-sm text-slate-600">${esc(order.observations || "Sin observaciones.")}</p>${order.reception ? `<h3 class="mt-5 font-black">Recepcion</h3><dl class="detail-grid mt-3"><div><dt>Fecha</dt><dd>${order.reception.receivedAt}</dd></div><div><dt>Entrega</dt><dd>${order.reception.complete}</dd></div><div><dt>Inventario</dt><dd>${order.reception.inventory ? "Si" : "No"}</dd></div><div><dt>Observaciones</dt><dd>${esc(order.reception.observations)}</dd></div></dl>` : ""}`);
+  }
+
+  function approvePurchaseOrder(id, type) {
+    if (!isAdmin()) return toast("Solo administracion puede dar visto bueno.", "error");
+    const order = byId("purchaseOrders", id);
+    if (order.status !== "En revision") return toast("Solo las ordenes en revision reciben vistos buenos.", "error");
+    order.approvals ||= { branchAdmin: null, generalManager: null };
+    const approverId = type === "branchAdmin" ? (order.branchAdminId || branchAdminFor(order.branchId)?.id) : (order.generalManagerId || generalManager()?.id);
+    order.approvals[type] = { by: approverId, at: new Date().toLocaleString("sv-SE").slice(0, 16) };
+    if (order.approvals.branchAdmin && order.approvals.generalManager) order.status = "Aprobada";
+    window.GymReservations.audit(app.data, app.user, "Ordenes de compra", type === "branchAdmin" ? "Visto bueno sucursal" : "Visto bueno gerencia", order.number);
+    save(); render(); toast(order.status === "Aprobada" ? "Orden aprobada con ambos vistos buenos." : "Visto bueno registrado.");
   }
 
   function changePurchaseOrderStatus(id, next) {
+    if (!isAdmin()) return toast("Solo administracion puede cambiar estados de ordenes.", "error");
     const order = byId("purchaseOrders", id);
     const allowed = window.GymRules.purchaseOrderFlow[order.status] || [];
     if (!allowed.includes(next)) return toast("Transicion de orden no permitida.", "error");
@@ -903,6 +1012,7 @@
   }
 
   function cycleAreaStatus(id) {
+    if (!isAdmin()) return toast("Solo administracion puede cambiar estados de areas.", "error");
     const area = byId("areas", id);
     const states = ["Disponible", "Capacidad limitada", "Completa", "Cerrada", "En mantenimiento"];
     area.status = states[(states.indexOf(area.status) + 1) % states.length];
@@ -915,6 +1025,7 @@
   }
 
   function changeMachineStatus(id, next) {
+    if (!isAdmin()) return toast("Solo administracion puede cambiar estados de maquinas.", "error");
     const machine = byId("machines", id);
     const allowed = window.GymRules.machineFlow[machine.status] || [];
     if (!allowed.includes(next)) return toast("Transicion de maquina no permitida.", "error");
@@ -939,6 +1050,7 @@
   }
 
   function updateMembershipStatus(id, next) {
+    if (!isAdmin()) return toast("Solo administracion puede cambiar estados de membresias.", "error");
     const membership = byId("memberships", id);
     const allowed = window.GymRules.membershipFlow[membership.status] || [];
     if (!allowed.includes(next)) return toast(`Transicion invalida desde ${membership.status}.`, "error");
@@ -952,6 +1064,7 @@
   }
 
   function startMaintenance(id) {
+    if (!isAdmin()) return toast("Solo administracion puede cambiar estados de mantenimiento.", "error");
     const item = byId("maintenance", id);
     if (item.status !== "Programado") return toast("Solo se pueden iniciar mantenimientos programados.", "error");
     item.status = "En proceso";
@@ -962,6 +1075,7 @@
   }
 
   function cancelMaintenance(id) {
+    if (!isAdmin()) return toast("Solo administracion puede cambiar estados de mantenimiento.", "error");
     const item = byId("maintenance", id);
     if (!["Programado", "En proceso"].includes(item.status)) return toast("No se puede cancelar este mantenimiento.", "error");
     item.status = "Cancelado";
@@ -1006,6 +1120,10 @@
       return render();
     }
     if (["reservationClient", "reservationSchedule", "reservationMachine"].includes(id)) return updateReservationPreview();
+    if (id === "poBranchInput" && $("#poBranchAdminInput")) {
+      $("#poBranchAdminInput").innerHTML = options(adminOptionsForBranch(value), branchAdminFor(value)?.id);
+      return;
+    }
     const maintenanceMap = { maintenanceSearch: "search", maintenanceBranch: "branch", maintenanceArea: "area", maintenanceTypeFilter: "type", maintenanceStatusFilter: "status" };
     if (maintenanceMap[id]) {
       app.filters.maintenance = app.filters.maintenance || {};

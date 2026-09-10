@@ -32,7 +32,7 @@
   const purchaseOrderFlow = {
     "Borrador": ["Solicitada", "Cancelada"],
     "Solicitada": ["En revision", "Cancelada"],
-    "En revision": ["Aprobada", "Rechazada", "Cancelada"],
+    "En revision": ["Rechazada", "Cancelada"],
     "Aprobada": ["Ordenada", "Cancelada"],
     "Ordenada": ["Recibida", "Cancelada"],
     "Rechazada": [],
