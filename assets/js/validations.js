@@ -29,6 +29,16 @@
     "Suspendida": ["Activa", "Cancelada"],
     "Cancelada": []
   };
+  const purchaseOrderFlow = {
+    "Borrador": ["Solicitada", "Cancelada"],
+    "Solicitada": ["En revision", "Cancelada"],
+    "En revision": ["Aprobada", "Rechazada", "Cancelada"],
+    "Aprobada": ["Ordenada", "Cancelada"],
+    "Ordenada": ["Recibida", "Cancelada"],
+    "Rechazada": [],
+    "Recibida": [],
+    "Cancelada": []
+  };
 
   function toMinutes(time) {
     const [h, m] = String(time).split(":").map(Number);
@@ -150,6 +160,7 @@
     reservationFlow,
     machineFlow,
     membershipFlow,
+    purchaseOrderFlow,
     activeReservationStates,
     unavailableMachineStates,
     unavailableAreaStates,

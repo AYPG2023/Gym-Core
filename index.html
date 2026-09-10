@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GymCore | Gestion de gimnasio</title>
+  <title>Renovatio Gym | Gestion de gimnasio</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -41,7 +41,7 @@
             <i data-lucide="dumbbell" class="h-4 w-4"></i>
             Administracion academica funcional
           </span>
-          <h1 class="mt-5 text-4xl font-black tracking-tight sm:text-6xl">GymCore</h1>
+          <h1 class="mt-5 text-4xl font-black tracking-tight sm:text-6xl">Renovatio Gym</h1>
           <p class="mt-4 max-w-2xl text-lg leading-8 text-white/82">Reservas, membresias, capacidad, pagos, mantenimiento y reportes en un prototipo frontend completo con LocalStorage.</p>
           <div class="mt-8 grid max-w-3xl gap-3 sm:grid-cols-3">
             <div class="glass-tile"><b>Capacidad</b><small>Cupos calculados por area, maquinas y reservas.</small></div>
@@ -55,9 +55,9 @@
         <form id="loginForm" class="panel w-full max-w-md p-6 sm:p-8" novalidate>
           <p class="eyebrow">Acceso simulado</p>
           <h2 class="mt-2 text-2xl font-black text-ink">Iniciar sesion</h2>
-          <p class="mt-2 text-sm text-slate-600">Selecciona una cuenta de demostracion. Clave: <strong>Gym2026!</strong></p>
+          <p class="mt-2 text-sm text-slate-600">Selecciona una cuenta de demostracion.</p>
           <label class="form-field">
-            <span>Usuario</span>
+            <span class="sr-only">Usuario</span>
             <select id="loginUser" class="form-control" required></select>
           </label>
           <label class="form-field">
@@ -81,7 +81,7 @@
     <header class="sticky top-0 z-40 border-b border-line bg-white/95 backdrop-blur lg:hidden">
       <div class="flex items-center justify-between px-4 py-3">
         <button id="mobileMenuButton" class="icon-btn" type="button" aria-label="Abrir menu"><i data-lucide="menu" class="h-5 w-5"></i></button>
-        <strong class="text-ink">GymCore</strong>
+        <strong class="text-ink">Renovatio Gym</strong>
         <button class="icon-btn" type="button" data-action="logout" aria-label="Cerrar sesion"><i data-lucide="log-out" class="h-5 w-5"></i></button>
       </div>
       <nav id="mobileNav" class="hidden border-t border-line p-3"></nav>
@@ -95,7 +95,7 @@
               <i data-lucide="activity" class="h-6 w-6"></i>
             </div>
             <div>
-              <p class="font-black leading-tight">GymCore</p>
+              <p class="font-black leading-tight">Renovatio Gym</p>
               <p id="activeUserLabel" class="text-xs text-white/65"></p>
             </div>
           </div>

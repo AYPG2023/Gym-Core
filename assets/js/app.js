@@ -9,8 +9,8 @@
 
   const roles = {
     admin: { label: "Administrador", permissions: ["all"] },
-    reception: { label: "Recepcionista", permissions: ["dashboard", "clients", "memberships", "schedules", "reservations", "payments", "reports"] },
-    trainer: { label: "Entrenador", permissions: ["dashboard", "schedules", "reservations", "reports"] },
+    reception: { label: "Recepcionista", permissions: ["dashboard", "clients", "memberships", "schedules", "reservations", "payments", "staffMetrics", "reports"] },
+    trainer: { label: "Entrenador", permissions: ["dashboard", "schedules", "reservations", "staffMetrics", "reports"] },
     client: { label: "Cliente", permissions: ["dashboard", "inventory", "schedules", "reservations", "memberships"] }
   };
 
@@ -18,23 +18,43 @@
     ["dashboard", "layout-dashboard", "Dashboard", "dashboard"],
     ["branches", "building-2", "Sucursales", "branches"],
     ["clients", "users-round", "Clientes", "clients"],
+    ["employees", "id-card", "Empleados", "employees"],
     ["memberships", "badge-dollar-sign", "Membresias", "memberships"],
     ["inventory", "warehouse", "Areas y maquinas", "inventory"],
     ["schedules", "calendar-days", "Horarios", "schedules"],
     ["reservations", "clipboard-check", "Reservas", "reservations"],
     ["maintenance", "wrench", "Mantenimiento", "maintenance"],
+    ["purchaseOrders", "shopping-cart", "Ordenes de compra", "purchaseOrders"],
     ["payments", "credit-card", "Pagos", "payments"],
+    ["staffMetrics", "target", "Metricas del personal", "staffMetrics"],
     ["reports", "chart-no-axes-combined", "Reportes", "reports"]
   ];
 
-  const app = { data: null, user: null, view: "dashboard", filters: { inventoryTab: "areas", reportTab: "Ingresos" }, charts: [] };
+  const app = { data: null, user: null, view: "dashboard", filters: { inventoryTab: "areas", reportTab: "Clientes" }, charts: [] };
 
   function normalizeData(data) {
+    const seed = window.GYM_SEED || {};
+    ["employees", "staffMetrics", "purchaseOrders"].forEach((key) => {
+      if (!Array.isArray(data[key])) data[key] = window.GymStorage?.clone ? window.GymStorage.clone(seed[key] || []) : JSON.parse(JSON.stringify(seed[key] || []));
+    });
+    data.clients.forEach((client, index) => {
+      client.code ||= `CLI-${String(index + 1).padStart(3, "0")}`;
+      client.joinedAt ||= "2026-09-01";
+      client.observations ||= "Sin observaciones registradas.";
+    });
+    data.purchaseOrders.forEach((order) => {
+      order.taxRate ??= 0.12;
+      order.items ||= [];
+      order.status = order.status === "En revisión" ? "En revision" : order.status;
+    });
     data.branches.forEach((branch, index) => {
       branch.code ||= index === 0 ? "Z10" : `SUC-${index + 1}`;
       branch.phone ||= "2400-0000";
       branch.email ||= `${branch.code.toLowerCase()}@gym.test`;
       branch.manager ||= "Encargado pendiente";
+      branch.weekdayHours ||= "Lunes-viernes 04:00-22:00";
+      branch.weekendHours ||= "Sabados y domingos 06:00-14:00";
+      branch.expectedAttendance ||= "75-100 personas, con expectativa de crecimiento";
       branch.capacity ||= data.areas.filter((area) => area.branchId === branch.id).reduce((sum, area) => sum + Number(area.capacity || 0), 0);
       if (branch.status === "Disponible") branch.status = "Activa";
     });
@@ -85,18 +105,32 @@
 
   function page(title, subtitle, actions = "") {
     $("#topTitle").textContent = title;
-    return `<div class="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p class="eyebrow">GymCore / ${esc(roles[app.user.role].label)}</p><h1 class="page-title">${esc(title)}</h1><p class="page-subtitle">${esc(subtitle)}</p></div><div class="flex flex-wrap gap-2">${actions}</div></div>`;
+    return `<div class="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p class="eyebrow">Renovatio Gym / ${esc(roles[app.user.role].label)}</p><h1 class="page-title">${esc(title)}</h1><p class="page-subtitle">${esc(subtitle)}</p></div><div class="flex flex-wrap gap-2">${actions}</div></div>`;
   }
 
   function byId(collection, id) { return window.GymRules.byId(app.data, collection, id); }
   function clientName(id) { return byId("clients", id)?.name || "Sin cliente"; }
   function areaName(id) { return byId("areas", id)?.name || "Sin area"; }
   function branchName(id) { return byId("branches", id)?.name || "Sin sucursal"; }
+  function employeeName(id) { return byId("employees", id)?.name || "Sin empleado"; }
   function trainerName(id) { return byId("trainers", id)?.name || "Sin entrenador"; }
   function machineName(id) { return id ? byId("machines", id)?.name || "Maquina" : "Area completa"; }
   function planName(id) { return byId("plans", id)?.name || "Plan"; }
   function branchOfMachine(machine) { return byId("areas", machine.areaId)?.branchId || ""; }
   function scheduleOf(reservation) { return byId("schedules", reservation.scheduleId); }
+  function money(value) { return `Q${Number(value || 0).toLocaleString("es-GT")}`; }
+  function orderSubtotal(order) { return (order.items || []).reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0); }
+  function orderTax(order) { return Math.round(orderSubtotal(order) * Number(order.taxRate ?? 0.12)); }
+  function orderTotal(order) { return orderSubtotal(order) + orderTax(order); }
+  function metricRecord(employeeId) { return app.data.staffMetrics.find((item) => item.employeeId === employeeId); }
+  function metricPercent(item) { return item.goal ? Math.round((Number(item.result || 0) / Number(item.goal)) * 100) : 0; }
+  function metricMet(item) { return Number(item.result || 0) >= Number(item.goal || 0); }
+  function bonusState(employee) {
+    const record = metricRecord(employee.id);
+    const metCount = record ? record.metrics.filter(metricMet).length : 0;
+    const approved = metCount === 2;
+    return { record, metCount, approved, tone: approved ? "green" : metCount === 1 ? "yellow" : "red", bonus: approved ? Number(employee.bonus || 0) : 0, total: Number(employee.baseSalary || 0) + (approved ? Number(employee.bonus || 0) : 0) };
+  }
 
   function branchFilter(id) {
     return !id || id === "all" ? app.data.branches : app.data.branches.filter((branch) => branch.id === id);
@@ -119,7 +153,7 @@
   function render() {
     if (!can(nav.find((item) => item[0] === app.view)?.[3] || "dashboard")) app.view = "dashboard";
     renderNav();
-    const views = { dashboard, branches, clients, memberships, inventory, schedules, reservations, maintenance, payments, reports };
+    const views = { dashboard, branches, clients, employees, memberships, inventory, schedules, reservations, maintenance, purchaseOrders, payments, staffMetrics, reports };
     $("#content").innerHTML = (views[app.view] || dashboard)();
     window.lucide?.createIcons();
     setTimeout(renderCharts, 0);
@@ -150,13 +184,29 @@
     const occupation = scope.schedules.length ? Math.round(scope.schedules.reduce((sum, schedule) => sum + window.GymRules.availability(app.data, schedule.id).percent, 0) / scope.schedules.length) : 0;
     const activeMemberships = app.data.memberships.filter((membership) => membership.status === "Activa" && scope.clients.some((client) => client.id === membership.clientId)).length;
     const expiring = app.data.memberships.filter((membership) => membership.status === "Proxima a vencer" && scope.clients.some((client) => client.id === membership.clientId)).length;
+    const employees = branchScoped(app.data.employees, scope.branchId);
+    const bonusEmployees = employees.filter((employee) => ["Coach", "Recepcionista"].includes(employee.position) && bonusState(employee).approved);
+    const bonusAmount = bonusEmployees.reduce((sum, employee) => sum + Number(employee.bonus || 0), 0);
+    const orders = app.data.purchaseOrders.filter((order) => scope.branchId === "all" || order.branchId === scope.branchId);
+    const pendingOrders = orders.filter((order) => ["Borrador", "Solicitada", "En revision"].includes(order.status)).length;
+    const approvedOrders = orders.filter((order) => ["Aprobada", "Ordenada"].includes(order.status)).length;
+    const receivedOrders = orders.filter((order) => order.status === "Recibida").length;
+    const equipmentSpend = orders.filter((order) => ["Aprobada", "Ordenada", "Recibida"].includes(order.status)).reduce((sum, order) => sum + orderTotal(order), 0);
 
-    return page("Dashboard", "Indicadores por sucursal, ingresos, ocupacion, reservas y mantenimiento.", button(`${icon("plus")} Nueva reserva`, "open-reservation", "primary")) +
+    return page("Dashboard", "Indicadores administrativos de clientes, empleados, compras, ingresos y mantenimiento.") +
       `<section class="panel mb-5 p-5"><label class="form-field mt-0 max-w-sm"><span>Sucursal global</span><select id="dashboardBranch" class="form-control"><option value="all">Todas las sucursales</option>${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), scope.branchId)}</select></label></section>
       <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        ${metric("Ingresos del dia", `Q${dayIncome}`, today, "wallet", "blue")}
-        ${metric("Ingresos del mes", `Q${monthIncome}`, "septiembre 2026", "landmark", "blue")}
-        ${metric("Clientes activos", activeClients, "filtrados por sucursal", "users-round", "green")}
+        ${metric("Total de clientes", scope.clients.length, `${activeClients} activos`, "users-round", "green")}
+        ${metric("Total de empleados", employees.length, "distribuidos por sucursal", "id-card", "blue")}
+        ${metric("Coaches activos", employees.filter((e) => e.position === "Coach" && e.status === "Activo").length, "entrenadores operativos", "dumbbell", "green")}
+        ${metric("Recepcionistas activos", employees.filter((e) => e.position === "Recepcionista" && e.status === "Activo").length, "atencion al cliente", "headphones", "green")}
+        ${metric("Bonificaciones alcanzadas", bonusEmployees.length, `${money(bonusAmount)} estimado`, "award", "yellow")}
+        ${metric("Ordenes pendientes", pendingOrders, "borrador, solicitadas o revision", "clock", "yellow")}
+        ${metric("Ordenes aprobadas", approvedOrders, "aprobadas u ordenadas", "check-circle-2", "green")}
+        ${metric("Compras recibidas", receivedOrders, "con recepcion registrada", "package-check", "green")}
+        ${metric("Gastos en equipo", money(equipmentSpend), "compras aprobadas/recibidas", "shopping-cart", "red")}
+        ${metric("Ingresos del dia", money(dayIncome), today, "wallet", "blue")}
+        ${metric("Ingresos del mes", money(monthIncome), "septiembre 2026", "landmark", "blue")}
         ${metric("Reservas del dia", todayReservations, "activas o pendientes", "calendar-check", "orange")}
         ${metric("Ocupacion actual", `${occupation}%`, "promedio operativo", "activity", "orange")}
         ${metric("Maquinas disponibles", scope.machines.filter((m) => m.status === "Disponible").length, "inventario operativo", "dumbbell", "green")}
@@ -193,25 +243,106 @@
     const scheduleIds = app.data.schedules.filter((schedule) => schedule.branchId === branch.id).map((schedule) => schedule.id);
     const reservations = app.data.reservations.filter((reservation) => scheduleIds.includes(reservation.scheduleId));
     const income = app.data.payments.filter((payment) => payment.branchId === branch.id && payment.status === "Pagado").reduce((sum, payment) => sum + Number(payment.amount), 0);
-    return `<article class="panel p-5 area-card"><div class="section-head"><div><h2>${esc(branch.code)} / ${esc(branch.name)}</h2><p>${esc(branch.address)}</p></div>${badge(branch.status)}</div><dl class="detail-grid mt-4"><div><dt>Encargado</dt><dd>${esc(branch.manager)}</dd></div><div><dt>Contacto</dt><dd>${esc(branch.phone)}</dd></div><div><dt>Horario</dt><dd>${branch.opens}-${branch.closes}</dd></div><div><dt>Capacidad</dt><dd>${branch.capacity}</dd></div><div><dt>Areas</dt><dd>${areas.length}</dd></div><div><dt>Maquinas</dt><dd>${machines.length}</dd></div><div><dt>Clientes</dt><dd>${clients.length}</dd></div><div><dt>Ingresos</dt><dd>Q${income}</dd></div></dl><div class="mt-4 flex flex-wrap gap-2">${button(icon("eye"), "branch-detail", "icon-only", `data-id="${branch.id}" title="Ver detalle"`)}${button(icon("pencil"), "open-branch", "icon-only", `data-id="${branch.id}" title="Editar"`)}${button(branch.status === "Activa" ? "Desactivar" : "Activar", "toggle-branch", branch.status === "Activa" ? "warning" : "success", `data-id="${branch.id}"`)}${button("Reservas", "branch-reservations", "secondary", `data-id="${branch.id}"`)}</div></article>`;
+    return `<article class="panel p-5 area-card"><div class="section-head"><div><h2>${esc(branch.code)} / ${esc(branch.name)}</h2><p>${esc(branch.address)}</p></div>${badge(branch.status)}</div><dl class="detail-grid mt-4"><div><dt>Encargado</dt><dd>${esc(branch.manager)}</dd></div><div><dt>Contacto</dt><dd>${esc(branch.phone)}</dd></div><div><dt>Horario</dt><dd>${esc(branch.weekdayHours)}<small>${esc(branch.weekendHours)}</small></dd></div><div><dt>Aforo esperado</dt><dd>${esc(branch.expectedAttendance)}</dd></div><div><dt>Capacidad</dt><dd>${branch.capacity}</dd></div><div><dt>Areas</dt><dd>${areas.length}</dd></div><div><dt>Maquinas</dt><dd>${machines.length}</dd></div><div><dt>Clientes</dt><dd>${clients.length}</dd></div><div><dt>Ingresos</dt><dd>Q${income}</dd></div></dl><div class="mt-4 flex flex-wrap gap-2">${button(icon("eye"), "branch-detail", "icon-only", `data-id="${branch.id}" title="Ver detalle"`)}${button(icon("pencil"), "open-branch", "icon-only", `data-id="${branch.id}" title="Editar"`)}${button(branch.status === "Activa" ? "Desactivar" : "Activar", "toggle-branch", branch.status === "Activa" ? "warning" : "success", `data-id="${branch.id}"`)}${button("Reservas", "branch-reservations", "secondary", `data-id="${branch.id}"`)}</div></article>`;
   }
 
   function clients() {
     const term = String(app.filters.client || "").toLowerCase();
-    const list = app.data.clients.filter((client) => Object.values(client).join(" ").toLowerCase().includes(term));
-    return page("Gestion de clientes", "Registro, filtros, estados, membresias, pagos y reservas por cliente.", button(`${icon("user-plus")} Registrar cliente`, "open-client", "primary")) +
-      `<section class="panel p-5"><div class="grid gap-3 md:grid-cols-[1fr_220px]"><input id="clientFilter" class="form-control" placeholder="Buscar cliente, correo o estado..." value="${esc(app.filters.client || "")}"><select id="clientStatusFilter" class="form-control"><option value="">Todos los estados</option>${options(["Activo", "Inactivo", "Suspendido", "Bloqueado"], app.filters.clientStatus || "")}</select></div></section>
+    const list = app.data.clients.filter((client) => {
+      const membership = window.GymRules.membershipFor(app.data, client.id);
+      const plan = window.GymRules.planFor(app.data, membership);
+      if (app.filters.clientBranch && client.branchId !== app.filters.clientBranch) return false;
+      if (app.filters.clientMembership && plan?.id !== app.filters.clientMembership) return false;
+      if (app.filters.clientStatus && client.status !== app.filters.clientStatus) return false;
+      return !term || `${client.code} ${client.name} ${client.email} ${client.phone} ${branchName(client.branchId)} ${plan?.name || ""} ${client.status}`.toLowerCase().includes(term);
+    });
+    return page("Clientes", "Administracion completa de registros, membresias, pagos, reservas y estados.", button(`${icon("user-plus")} Nuevo cliente`, "open-client", "primary")) +
+      `<section class="panel p-5"><div class="grid gap-3 lg:grid-cols-[1fr_210px_210px_190px]"><input id="clientFilter" class="form-control" placeholder="Buscar codigo, cliente, telefono o correo..." value="${esc(app.filters.client || "")}"><select id="clientBranchFilter" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((b) => ({ value: b.id, label: b.name })), app.filters.clientBranch || "")}</select><select id="clientMembershipFilter" class="form-control"><option value="">Todas las membresias</option>${options(app.data.plans.map((p) => ({ value: p.id, label: p.name })), app.filters.clientMembership || "")}</select><select id="clientStatusFilter" class="form-control"><option value="">Todos los estados</option>${options(["Activo", "Inactivo", "Suspendido", "Bloqueado"], app.filters.clientStatus || "")}</select></div></section>
       <section class="panel mt-5 overflow-hidden">${clientTable(list)}</section>`;
   }
 
   function clientTable(list) {
-    const rows = list.filter((client) => !app.filters.clientStatus || client.status === app.filters.clientStatus).map((client) => {
+    const rows = list.map((client) => {
       const membership = window.GymRules.membershipFor(app.data, client.id);
-      const payments = app.data.payments.filter((payment) => payment.clientId === client.id).length;
+      const plan = window.GymRules.planFor(app.data, membership);
+      const payments = app.data.payments.filter((payment) => payment.clientId === client.id);
       const reservations = app.data.reservations.filter((reservation) => reservation.clientId === client.id).length;
-      return `<tr><td><b>${esc(client.name)}</b><small>${esc(client.email)} / ${esc(client.phone)}</small></td><td>${branchName(client.branchId)}</td><td>${membership ? badge(membership.status) : badge("Sin membresia")}</td><td>${badge(client.status)}</td><td>${payments} pagos / ${reservations} reservas</td><td><div class="row-actions">${button(icon("eye"), "client-detail", "icon-only", `data-id="${client.id}" title="Detalle"`)}${button(icon("pencil"), "open-client", "icon-only", `data-id="${client.id}" title="Editar"`)}${button(client.status === "Activo" ? "Suspender" : "Activar", "toggle-client", "secondary", `data-id="${client.id}"`)}</div></td></tr>`;
+      const lastPayment = payments.sort((a, b) => b.date.localeCompare(a.date))[0];
+      return `<tr><td><b>${esc(client.code)}</b><small>${esc(client.name)}</small></td><td>${esc(client.phone)}<small>${esc(client.email)}</small></td><td>${branchName(client.branchId)}</td><td>${esc(plan?.name || "Sin plan")}<small>${membership?.endDate || "Sin vencimiento"}</small></td><td>${client.joinedAt}<small>Vence ${membership?.endDate || "-"}</small></td><td>${badge(client.status)}</td><td>${reservations}</td><td>${lastPayment ? `${lastPayment.date}<small>${money(lastPayment.amount)} / ${esc(lastPayment.status)}</small>` : "Sin pagos"}</td><td><div class="row-actions">${button(icon("eye"), "client-detail", "icon-only", `data-id="${client.id}" title="Ver"`)}${button(icon("pencil"), "open-client", "icon-only", `data-id="${client.id}" title="Editar"`)}${client.status !== "Activo" ? button("Activar", "client-status", "success", `data-id="${client.id}" data-next="Activo"`) : ""}${client.status !== "Suspendido" ? button("Suspender", "client-status", "warning", `data-id="${client.id}" data-next="Suspendido"`) : ""}${client.status !== "Bloqueado" ? button("Bloquear", "client-status", "danger", `data-id="${client.id}" data-next="Bloqueado"`) : ""}</div></td></tr>`;
     }).join("");
-    return `<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Sucursal</th><th>Membresia</th><th>Estado</th><th>Historial</th><th>Acciones</th></tr></thead><tbody>${rows || `<tr><td colspan="6" class="empty">No hay clientes con estos filtros.</td></tr>`}</tbody></table></div>`;
+    return `<div class="table-wrap"><table><thead><tr><th>Codigo / Nombre</th><th>Contacto</th><th>Sucursal</th><th>Membresia</th><th>Inscripcion / Vencimiento</th><th>Estado</th><th>Reservas</th><th>Ultimo pago</th><th>Acciones</th></tr></thead><tbody>${rows || `<tr><td colspan="9" class="empty">No hay clientes con estos filtros.</td></tr>`}</tbody></table></div>`;
+  }
+
+  function employees() {
+    const term = String(app.filters.employeeSearch || "").toLowerCase();
+    const list = app.data.employees.filter((employee) => {
+      if (app.filters.employeeBranch && employee.branchId !== app.filters.employeeBranch) return false;
+      if (app.filters.employeePosition && employee.position !== app.filters.employeePosition) return false;
+      if (app.filters.employeeStatus && employee.status !== app.filters.employeeStatus) return false;
+      return !term || `${employee.code} ${employee.name} ${employee.position} ${employee.email} ${employee.phone} ${branchName(employee.branchId)} ${employee.status}`.toLowerCase().includes(term);
+    });
+    return page("Empleados", "Administracion de recepcionistas, coaches, administradores y mantenimiento.", button(`${icon("user-plus")} Nuevo empleado`, "open-employee", "primary")) +
+      `<section class="panel p-5"><div class="grid gap-3 lg:grid-cols-[1fr_210px_210px_190px]"><input id="employeeSearch" class="form-control" placeholder="Buscar codigo, empleado, telefono o correo..." value="${esc(app.filters.employeeSearch || "")}"><select id="employeeBranchFilter" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((b) => ({ value: b.id, label: b.name })), app.filters.employeeBranch || "")}</select><select id="employeePositionFilter" class="form-control"><option value="">Todos los puestos</option>${options(["Recepcionista", "Coach", "Administrador", "Mantenimiento"], app.filters.employeePosition || "")}</select><select id="employeeStatusFilter" class="form-control"><option value="">Todos los estados</option>${options(["Activo", "Inactivo", "Suspendido", "Vacaciones"], app.filters.employeeStatus || "")}</select></div></section>
+      <section class="panel mt-5 overflow-hidden"><div class="table-wrap"><table><thead><tr><th>Codigo / Nombre</th><th>Puesto</th><th>Sucursal</th><th>Contacto</th><th>Contratacion</th><th>Salario</th><th>Horario</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${list.map(employeeRow).join("") || `<tr><td colspan="9" class="empty">No hay empleados con estos filtros.</td></tr>`}</tbody></table></div></section>`;
+  }
+
+  function employeeRow(employee) {
+    return `<tr><td><b>${esc(employee.code)}</b><small>${esc(employee.name)}</small></td><td>${esc(employee.position)}</td><td>${branchName(employee.branchId)}</td><td>${esc(employee.phone)}<small>${esc(employee.email)}</small></td><td>${employee.hiredAt}</td><td>${money(employee.baseSalary)}</td><td>${esc(employee.workSchedule)}</td><td>${badge(employee.status)}</td><td><div class="row-actions">${button(icon("eye"), "employee-detail", "icon-only", `data-id="${employee.id}" title="Ver"`)}${button(icon("pencil"), "open-employee", "icon-only", `data-id="${employee.id}" title="Editar"`)}${employee.status !== "Activo" ? button("Activar", "employee-status", "success", `data-id="${employee.id}" data-next="Activo"`) : button("Desactivar", "employee-status", "warning", `data-id="${employee.id}" data-next="Inactivo"`)}</div></td></tr>`;
+  }
+
+  function staffMetrics() {
+    const candidates = app.data.employees.filter((employee) => ["Coach", "Recepcionista"].includes(employee.position));
+    let selectedId = app.filters.staffEmployee || app.user.employeeId || candidates[0]?.id;
+    if (app.user.role === "trainer" && app.user.employeeId) selectedId = app.user.employeeId;
+    if (app.user.role === "reception" && app.user.employeeId) selectedId = app.user.employeeId;
+    const employee = byId("employees", selectedId) || candidates[0];
+    app.filters.staffEmployee = employee?.id;
+    const state = employee ? bonusState(employee) : {};
+    return page("Metricas del personal", "Resultados individuales y regla visual de bonificacion por empleado.", "") +
+      `<section class="panel p-5"><label class="form-field mt-0 max-w-md"><span>Empleado</span><select id="staffEmployeeSelect" class="form-control" ${app.user.role === "admin" ? "" : "disabled"}>${options(candidates.map((item) => ({ value: item.id, label: `${item.name} / ${item.position} / ${branchName(item.branchId)}` })), employee?.id)}</select></label></section>
+      ${employee ? staffMetricDetail(employee, state) : `<section class="panel mt-5 empty">No hay metricas registradas.</section>`}`;
+  }
+
+  function staffMetricDetail(employee, state) {
+    const metrics = state.record?.metrics || [];
+    return `<section class="mt-5 grid gap-5 xl:grid-cols-[1.25fr_.75fr]"><article class="grid gap-4 md:grid-cols-2">${metrics.map(metricCard).join("")}</article><article class="panel bonus-card ${state.tone} p-5"><div class="section-head"><div><h2>Resumen de bonificacion</h2><p>${esc(employee.name)} / ${esc(employee.position)}</p></div>${badge(state.approved ? "Bonificacion aprobada" : "Bonificacion no alcanzada")}</div><dl class="detail-grid mt-4"><div><dt>Sueldo base</dt><dd>${money(employee.baseSalary)}</dd></div><div><dt>Bonificacion</dt><dd>${money(state.bonus)}</dd></div><div><dt>Total estimado</dt><dd>${money(state.total)}</dd></div><div><dt>Resultado</dt><dd>${state.approved ? "Bonificacion aprobada" : "Bonificacion no alcanzada"}</dd></div></dl><p class="mt-4 text-sm font-bold text-slate-700">La bonificacion solo se aprueba cuando cumple las dos metricas obligatorias.</p></article></section>
+    <section class="panel mt-5 p-5"><div class="section-head"><div><h2>Detalle operativo</h2><p>Datos individuales del periodo ${esc(state.record?.period || "2026-09")}.</p></div></div><dl class="detail-grid mt-4"><div><dt>Sucursal</dt><dd>${branchName(employee.branchId)}</dd></div><div><dt>Clases asignadas</dt><dd>${esc(state.record?.assignedClasses || "No aplica")}</dd></div><div><dt>Clientes atendidos</dt><dd>${state.record?.clientsServed ?? 0}</dd></div><div><dt>Ausencias</dt><dd>${state.record?.absences ?? 0}</dd></div><div><dt>Calificacion promedio</dt><dd>${state.record?.rating ?? "-"}</dd></div><div><dt>Horario</dt><dd>${esc(employee.workSchedule)}</dd></div><div><dt>Sueldo base</dt><dd>${money(employee.baseSalary)}</dd></div><div><dt>Bonificacion posible</dt><dd>${money(employee.bonus)}</dd></div></dl></section>`;
+  }
+
+  function metricCard(item) {
+    const percent = metricPercent(item);
+    const met = metricMet(item);
+    return `<article class="panel p-5"><div class="section-head"><div><h2>${esc(item.label)}</h2><p>${esc(item.unit)}</p></div>${badge(met ? "Cumplida" : "No cumplida")}</div><dl class="detail-grid mt-4"><div><dt>Meta establecida</dt><dd>${item.goal}</dd></div><div><dt>Resultado alcanzado</dt><dd>${item.result}</dd></div><div><dt>Cumplimiento</dt><dd>${percent}%</dd></div><div><dt>Estado</dt><dd>${met ? "Cumplida" : "No cumplida"}</dd></div></dl><div class="mt-4 h-3 rounded-full bg-slate-200"><span class="block h-3 rounded-full ${met ? "bg-emerald-500" : "bg-amber-500"}" style="width:${Math.min(percent, 130)}%"></span></div></article>`;
+  }
+
+  function purchaseOrders() {
+    const f = app.filters.purchaseOrders || {};
+    const term = String(f.search || "").toLowerCase();
+    const list = app.data.purchaseOrders.filter((order) => {
+      if (f.branch && order.branchId !== f.branch) return false;
+      if (f.supplier && order.supplier !== f.supplier) return false;
+      if (f.date && order.date !== f.date) return false;
+      if (f.status && order.status !== f.status) return false;
+      return !term || `${order.number} ${order.supplier} ${order.purchaseType} ${order.reason} ${order.status} ${branchName(order.branchId)} ${employeeName(order.requesterId)}`.toLowerCase().includes(term);
+    });
+    const suppliers = [...new Set(app.data.purchaseOrders.map((order) => order.supplier))];
+    return page("Ordenes de compra", "Gestion de maquinas, repuestos, accesorios, equipos e insumos.", button(`${icon("plus")} Nueva orden de compra`, "open-purchase-order", "primary")) +
+      `<section class="panel p-5"><div class="grid gap-3 lg:grid-cols-[1fr_190px_190px_170px_190px]"><input id="poSearch" class="form-control" placeholder="Buscar orden, proveedor, motivo o solicitante..." value="${esc(f.search || "")}"><select id="poBranch" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((b) => ({ value: b.id, label: b.name })), f.branch || "")}</select><select id="poSupplier" class="form-control"><option value="">Todos los proveedores</option>${options(suppliers, f.supplier || "")}</select><input id="poDate" type="date" class="form-control" value="${esc(f.date || "")}"><select id="poStatus" class="form-control"><option value="">Todos los estados</option>${options(["Borrador", "Solicitada", "En revision", "Aprobada", "Rechazada", "Ordenada", "Recibida", "Cancelada"], f.status || "")}</select></div></section>
+      <section class="panel mt-5 overflow-hidden"><div class="table-wrap"><table><thead><tr><th>Orden</th><th>Fecha</th><th>Sucursal / Solicitante</th><th>Proveedor</th><th>Tipo</th><th>Articulos</th><th>Total</th><th>Entrega</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${list.map(orderRow).join("") || `<tr><td colspan="10" class="empty">No hay ordenes con estos filtros.</td></tr>`}</tbody></table></div></section>`;
+  }
+
+  function orderRow(order) {
+    const items = (order.items || []).map((item) => `${item.quantity} x ${item.name}`).join(", ");
+    return `<tr><td><b>${esc(order.number)}</b></td><td>${order.date}</td><td>${branchName(order.branchId)}<small>${employeeName(order.requesterId)}</small></td><td>${esc(order.supplier)}</td><td>${esc(order.purchaseType)}</td><td>${esc(items)}</td><td>${money(orderTotal(order))}<small>Subtotal ${money(orderSubtotal(order))}</small></td><td>${order.expectedDelivery}</td><td>${badge(order.status)}</td><td><div class="row-actions">${button(icon("eye"), "purchase-order-detail", "icon-only", `data-id="${order.id}" title="Ver"`)}${!["Recibida", "Cancelada", "Rechazada"].includes(order.status) ? button(icon("pencil"), "open-purchase-order", "icon-only", `data-id="${order.id}" title="Editar"`) : ""}${purchaseOrderActions(order)}</div></td></tr>`;
+  }
+
+  function purchaseOrderActions(order) {
+    const labels = { "Solicitada": "Solicitar", "En revision": "Revisar", "Aprobada": "Aprobar", "Ordenada": "Ordenar", "Recibida": "Marcar recibida", "Rechazada": "Rechazar", "Cancelada": "Cancelar" };
+    return (window.GymRules.purchaseOrderFlow[order.status] || []).map((next) => {
+      const action = next === "Recibida" ? "receive-purchase-order" : "purchase-order-status";
+      const variant = next === "Cancelada" || next === "Rechazada" ? "danger" : next === "Aprobada" || next === "Ordenada" ? "success" : "secondary";
+      return button(labels[next] || next, action, variant, `data-id="${order.id}" data-next="${next}"`);
+    }).join("");
   }
 
   function memberships() {
@@ -336,7 +467,7 @@
   }
 
   function reports() {
-    const tab = app.filters.reportTab || "Ingresos";
+    const tab = app.filters.reportTab || "Clientes";
     const f = app.filters.report || {};
     const filteredPayments = app.data.payments.filter((payment) => {
       if (f.from && payment.date < f.from) return false;
@@ -348,27 +479,51 @@
     });
     const paid = filteredPayments.filter((payment) => payment.status === "Pagado");
     return page("Reportes", "Categorias administrativas con filtros, graficas, tablas y exportaciones.", `${button(`${icon("printer")} Imprimir`, "print-report", "ghost")}${button(`${icon("download")} Exportar CSV`, "export-report", "secondary")}${button(`${icon("file-down")} Descargar reporte`, "download-report", "primary")}`) +
-      `<section class="panel p-5"><div class="tabs">${["Ingresos", "Sucursales", "Clientes", "Membresias", "Reservas", "Ocupacion", "Maquinas", "Mantenimientos"].map((name) => `<button class="${tab === name ? "active" : ""}" data-action="report-tab" data-tab="${name}">${name}</button>`).join("")}</div><div class="mt-4 grid gap-3 lg:grid-cols-5"><input id="reportFrom" class="form-control" type="date" value="${esc(f.from || "2026-09-01")}"><input id="reportTo" class="form-control" type="date" value="${esc(f.to || "2026-09-30")}"><select id="reportBranch" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((b) => ({ value: b.id, label: b.name })), f.branch || "")}</select><select id="reportMethod" class="form-control"><option value="">Todos los metodos</option>${options(["Efectivo", "Tarjeta", "Transferencia"], f.method || "")}</select><select id="reportStatus" class="form-control"><option value="">Todos los estados</option>${options(["Pendiente", "Pagado", "Rechazado", "Anulado", "Confirmada", "Cancelada", "En mantenimiento"], f.status || "")}</select></div></section>
+      `<section class="panel p-5"><div class="tabs">${["Clientes", "Empleados", "Compras", "Financiero"].map((name) => `<button class="${tab === name ? "active" : ""}" data-action="report-tab" data-tab="${name}">${name}</button>`).join("")}</div><div class="mt-4 grid gap-3 lg:grid-cols-5"><input id="reportFrom" class="form-control" type="date" value="${esc(f.from || "2026-09-01")}"><input id="reportTo" class="form-control" type="date" value="${esc(f.to || "2026-09-30")}"><select id="reportBranch" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((b) => ({ value: b.id, label: b.name })), f.branch || "")}</select><select id="reportMethod" class="form-control"><option value="">Todos los metodos</option>${options(["Efectivo", "Tarjeta", "Transferencia"], f.method || "")}</select><select id="reportStatus" class="form-control"><option value="">Todos los estados</option>${options(["Pendiente", "Pagado", "Rechazado", "Anulado", "Confirmada", "Cancelada", "En mantenimiento", "Aprobada", "Recibida", "En revision"], f.status || "")}</select></div></section>
       ${reportBody(tab, filteredPayments, paid)}`;
   }
 
   function reportBody(tab, filteredPayments, paid) {
-    if (tab === "Ingresos") {
-      const total = paid.reduce((sum, payment) => sum + Number(payment.amount), 0);
-      const previous = app.data.payments.filter((payment) => payment.status === "Pagado" && payment.date < "2026-09-01").reduce((sum, payment) => sum + Number(payment.amount), 0);
-      const diff = previous ? Math.round(((total - previous) / previous) * 100) : 100;
-      return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Ingresos totales", `Q${total}`, `${diff}% vs periodo anterior`, "wallet", "blue")}${metric("Cantidad de pagos", filteredPayments.length, "segun filtros", "receipt", "green")}${metric("Pendientes", filteredPayments.filter((p) => p.status === "Pendiente").length, "pagos", "clock", "yellow")}${metric("Rechazados/anulados", filteredPayments.filter((p) => ["Rechazado", "Anulado"].includes(p.status)).length, "pagos", "circle-x", "red")}</section><section class="mt-5 grid gap-5 xl:grid-cols-2"><article class="panel p-5"><h2>Ingresos por sucursal</h2><div class="chart-box"><canvas id="reportBranchIncomeChart"></canvas></div></article><article class="panel p-5"><h2>Ingresos por metodo</h2><div class="chart-box"><canvas id="reportMethodChart"></canvas></div></article></section>${paymentReportTable(filteredPayments)}`;
-    }
-    const cards = {
-      Sucursales: app.data.branches.length,
-      Clientes: app.data.clients.length,
-      Membresias: app.data.memberships.length,
-      Reservas: app.data.reservations.length,
-      Ocupacion: `${Math.round(app.data.schedules.reduce((sum, schedule) => sum + window.GymRules.availability(app.data, schedule.id).percent, 0) / app.data.schedules.length)}%`,
-      Maquinas: app.data.machines.length,
-      Mantenimientos: app.data.maintenance.length
-    };
-    return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric(tab, cards[tab], "resumen actual", "chart-column", "blue")}${metric("Activos", activeCountFor(tab), "registros vigentes", "check-circle-2", "green")}${metric("Alertas", alertCountFor(tab), "requieren atencion", "triangle-alert", "yellow")}${metric("Relacionados", relatedCountFor(tab), "vinculos operativos", "git-branch", "orange")}</section><section class="mt-5 grid gap-5 xl:grid-cols-2"><article class="panel p-5"><h2>${esc(tab)} por estado</h2><div class="chart-box"><canvas id="genericStateChart"></canvas></div></article><article class="panel p-5"><h2>Distribucion por sucursal</h2><div class="chart-box"><canvas id="genericBranchChart"></canvas></div></article></section>`;
+    if (tab === "Clientes") return clientReport();
+    if (tab === "Empleados") return employeeReport();
+    if (tab === "Compras") return purchaseReport();
+    return financialReport(filteredPayments, paid);
+  }
+
+  function countBy(items, keyFn) {
+    return items.reduce((acc, item) => {
+      const key = keyFn(item) || "Sin dato";
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+  }
+
+  function summaryTable(title, rows) {
+    return `<article class="panel overflow-hidden"><div class="section-head p-5"><div><h2>${esc(title)}</h2><p>${rows.length} grupos.</p></div></div>${simpleTable(["Categoria", "Cantidad"], rows)}</article>`;
+  }
+
+  function clientReport() {
+    const active = app.data.clients.filter((client) => client.status === "Activo").length;
+    const renewals = app.data.memberships.filter((membership) => membership.startDate >= "2026-09-01").length;
+    return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Clientes totales", app.data.clients.length, "base actual", "users-round", "blue")}${metric("Activos e inactivos", `${active}/${app.data.clients.length - active}`, "activo / otros estados", "user-check", "green")}${metric("Nuevas inscripciones", app.data.clients.filter((c) => c.joinedAt >= "2026-09-01").length, "periodo seleccionado", "user-plus", "yellow")}${metric("Renovaciones", renewals, "membresias iniciadas", "refresh-cw", "orange")}</section><section class="mt-5 grid gap-5 xl:grid-cols-2">${summaryTable("Clientes por sucursal", Object.entries(countBy(app.data.clients, (c) => branchName(c.branchId))).map(([k, v]) => [k, v]))}${summaryTable("Clientes por membresia", Object.entries(countBy(app.data.clients, (c) => planName(window.GymRules.membershipFor(app.data, c.id)?.planId))).map(([k, v]) => [k, v]))}</section>`;
+  }
+
+  function employeeReport() {
+    const bonusApproved = app.data.employees.filter((employee) => ["Coach", "Recepcionista"].includes(employee.position) && bonusState(employee).approved).length;
+    return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Empleados", app.data.employees.length, "nomina demo", "id-card", "blue")}${metric("Cumplen ambas metas", bonusApproved, "bonificacion aprobada", "award", "green")}${metric("No alcanzadas", app.data.staffMetrics.length - bonusApproved, "una o ninguna meta", "triangle-alert", "yellow")}${metric("Monto aprobado", money(app.data.employees.filter((e) => bonusState(e).approved).reduce((s, e) => s + Number(e.bonus || 0), 0)), "bonificaciones", "wallet", "orange")}</section><section class="mt-5 grid gap-5 xl:grid-cols-2">${summaryTable("Empleados por sucursal", Object.entries(countBy(app.data.employees, (e) => branchName(e.branchId))).map(([k, v]) => [k, v]))}${summaryTable("Empleados por puesto", Object.entries(countBy(app.data.employees, (e) => e.position)).map(([k, v]) => [k, v]))}</section><section class="panel mt-5 overflow-hidden"><div class="section-head p-5"><div><h2>Metricas por empleado</h2><p>Cumplimiento de metas y bonificaciones.</p></div></div><div class="table-wrap"><table><thead><tr><th>Empleado</th><th>Puesto</th><th>Meta 1</th><th>Meta 2</th><th>Resultado</th></tr></thead><tbody>${app.data.employees.filter((e) => metricRecord(e.id)).map((employee) => { const state = bonusState(employee); return `<tr><td>${esc(employee.name)}</td><td>${esc(employee.position)}</td><td>${badge(metricMet(state.record.metrics[0]) ? "Cumplida" : "No cumplida")}</td><td>${badge(metricMet(state.record.metrics[1]) ? "Cumplida" : "No cumplida")}</td><td>${state.approved ? "Bonificacion aprobada" : "Bonificacion no alcanzada"}</td></tr>`; }).join("")}</tbody></table></div></section>`;
+  }
+
+  function purchaseReport() {
+    const pending = app.data.purchaseOrders.filter((order) => ["Borrador", "Solicitada", "En revision"].includes(order.status)).length;
+    const received = app.data.purchaseOrders.filter((order) => order.status === "Recibida").length;
+    return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Ordenes", app.data.purchaseOrders.length, "compras registradas", "shopping-cart", "blue")}${metric("Pendientes", pending, "por aprobar o revisar", "clock", "yellow")}${metric("Equipos recibidos", received, "recepciones cerradas", "package-check", "green")}${metric("Gastos por equipo", money(app.data.purchaseOrders.reduce((s, o) => s + orderTotal(o), 0)), "total solicitado", "wallet", "red")}</section><section class="mt-5 grid gap-5 xl:grid-cols-2">${summaryTable("Ordenes por estado", Object.entries(countBy(app.data.purchaseOrders, (o) => o.status)).map(([k, v]) => [k, v]))}${summaryTable("Compras por sucursal", Object.entries(countBy(app.data.purchaseOrders, (o) => branchName(o.branchId))).map(([k, v]) => [k, v]))}${summaryTable("Compras por proveedor", Object.entries(countBy(app.data.purchaseOrders, (o) => o.supplier)).map(([k, v]) => [k, v]))}${summaryTable("Gastos por tipo de equipo", Object.entries(app.data.purchaseOrders.reduce((acc, order) => { acc[order.purchaseType] = (acc[order.purchaseType] || 0) + orderTotal(order); return acc; }, {})).map(([k, v]) => [k, money(v)]))}</section>`;
+  }
+
+  function financialReport(filteredPayments, paid) {
+    const income = paid.reduce((sum, payment) => sum + Number(payment.amount), 0);
+    const purchases = app.data.purchaseOrders.filter((order) => ["Aprobada", "Ordenada", "Recibida"].includes(order.status)).reduce((sum, order) => sum + orderTotal(order), 0);
+    const maintenanceCost = app.data.maintenance.reduce((sum, item) => sum + Number(item.finalCost || item.cost || 0), 0);
+    return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Ingresos por pagos", money(income), "membresias pagadas", "wallet", "blue")}${metric("Gastos por compras", money(purchases), "ordenes aprobadas", "shopping-cart", "red")}${metric("Costos mantenimiento", money(maintenanceCost), "programados/finalizados", "wrench", "yellow")}${metric("Resultado estimado", money(income - purchases - maintenanceCost), "global", "landmark", income - purchases - maintenanceCost >= 0 ? "green" : "red")}</section><section class="mt-5 grid gap-5 xl:grid-cols-2"><article class="panel p-5"><h2>Ingresos por sucursal</h2><div class="chart-box"><canvas id="reportBranchIncomeChart"></canvas></div></article><article class="panel p-5"><h2>Ingresos por metodo</h2><div class="chart-box"><canvas id="reportMethodChart"></canvas></div></article></section>${paymentReportTable(filteredPayments)}<section class="panel mt-5 overflow-hidden"><div class="section-head p-5"><div><h2>Resultado estimado por sucursal</h2><p>Ingresos menos compras y mantenimiento asignado.</p></div></div>${simpleTable(["Sucursal", "Ingresos", "Gastos compras", "Resultado"], app.data.branches.map((branch) => { const branchIncome = app.data.payments.filter((p) => p.branchId === branch.id && p.status === "Pagado").reduce((s, p) => s + p.amount, 0); const branchPurchases = app.data.purchaseOrders.filter((o) => o.branchId === branch.id).reduce((s, o) => s + orderTotal(o), 0); return [branch.name, money(branchIncome), money(branchPurchases), money(branchIncome - branchPurchases)]; }))}</section>`;
   }
 
   function activeCountFor(tab) {
@@ -397,7 +552,7 @@
 
   function showModal(title, body) {
     $("#modalRoot").classList.remove("hidden");
-    $("#modalRoot").innerHTML = `<div class="modal-backdrop" data-action="close-modal"><section class="modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()"><div class="section-head"><h2>${esc(title)}</h2>${button(icon("x"), "close-modal", "icon-only", `title="Cerrar"`)}</div><div class="mt-5">${body}</div></section></div>`;
+    $("#modalRoot").innerHTML = `<div class="modal-backdrop" data-action="close-modal"><section class="modal" role="dialog" aria-modal="true"><div class="section-head"><h2>${esc(title)}</h2>${button(icon("x"), "close-modal", "icon-only", `title="Cerrar"`)}</div><div class="mt-5">${body}</div></section></div>`;
     window.lucide?.createIcons();
   }
 
@@ -408,11 +563,28 @@
   }
 
   function branchForm(branch = {}) {
-    showModal(branch.id ? "Editar sucursal" : "Nueva sucursal", `<form id="branchForm" data-id="${esc(branch.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Codigo</span><input id="branchCode" class="form-control" value="${esc(branch.code || "")}" required></label><label class="form-field"><span>Nombre</span><input id="branchName" class="form-control" value="${esc(branch.name || "")}" required></label><label class="form-field md:col-span-2"><span>Direccion</span><input id="branchAddress" class="form-control" value="${esc(branch.address || "")}" required></label><label class="form-field"><span>Telefono</span><input id="branchPhone" class="form-control" value="${esc(branch.phone || "")}"></label><label class="form-field"><span>Correo</span><input id="branchEmail" class="form-control" type="email" value="${esc(branch.email || "")}"></label><label class="form-field"><span>Encargado</span><input id="branchManager" class="form-control" value="${esc(branch.manager || "")}"></label><label class="form-field"><span>Capacidad maxima</span><input id="branchCapacity" type="number" class="form-control" value="${esc(branch.capacity || 40)}"></label><label class="form-field"><span>Apertura</span><input id="branchOpens" type="time" class="form-control" value="${esc(branch.opens || "06:00")}"></label><label class="form-field"><span>Cierre</span><input id="branchCloses" type="time" class="form-control" value="${esc(branch.closes || "21:00")}"></label><label class="form-field md:col-span-2"><span>Estado</span><select id="branchStatus" class="form-control">${options(["Activa", "Inactiva", "En mantenimiento", "Cerrada temporalmente"], branch.status || "Activa")}</select></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar sucursal</button></form>`);
+    const employees = app.data.employees || [];
+    const selectedManager = employees.some((employee) => employee.name === branch.manager) ? branch.manager : employees[0]?.name || branch.manager || "";
+    const managerOptions = employees.map((employee) => ({ value: employee.name, label: `${employee.name} / ${employee.position}` }));
+    if (branch.manager && !employees.some((employee) => employee.name === branch.manager)) managerOptions.unshift({ value: branch.manager, label: `${branch.manager} / encargado actual` });
+    showModal(branch.id ? "Editar sucursal" : "Nueva sucursal", `<form id="branchForm" data-id="${esc(branch.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Codigo</span><input id="branchCode" class="form-control" value="${esc(branch.code || "")}" required></label><label class="form-field"><span>Nombre</span><input id="branchName" class="form-control" value="${esc(branch.name || "")}" required></label><label class="form-field md:col-span-2"><span>Direccion</span><input id="branchAddress" class="form-control" value="${esc(branch.address || "")}" required></label><label class="form-field"><span>Telefono</span><input id="branchPhone" class="form-control" value="${esc(branch.phone || "")}"></label><label class="form-field"><span>Correo</span><input id="branchEmail" class="form-control" type="email" value="${esc(branch.email || "")}"></label><label class="form-field"><span>Encargado</span><select id="branchManager" class="form-control">${options(managerOptions, selectedManager)}</select></label><label class="form-field"><span>Capacidad maxima</span><input id="branchCapacity" type="number" class="form-control" value="${esc(branch.capacity || 100)}"></label><label class="form-field"><span>Horario lunes-viernes</span><input id="branchWeekdayHours" class="form-control" value="${esc(branch.weekdayHours || "Lunes-viernes 04:00-22:00")}"></label><label class="form-field"><span>Horario sabado-domingo</span><input id="branchWeekendHours" class="form-control" value="${esc(branch.weekendHours || "Sabados y domingos 06:00-14:00")}"></label><label class="form-field"><span>Aforo esperado</span><input id="branchExpectedAttendance" class="form-control" value="${esc(branch.expectedAttendance || "75-100 personas, con expectativa de crecimiento")}"></label><label class="form-field md:col-span-2"><span>Estado</span><select id="branchStatus" class="form-control">${options(["Activa", "Inactiva", "En mantenimiento", "Cerrada temporalmente"], branch.status || "Activa")}</select></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar sucursal</button></form>`);
   }
 
   function clientForm(client = {}) {
     showModal(client.id ? "Editar cliente" : "Registrar cliente", `<form id="clientForm" data-id="${esc(client.id || "")}" class="grid gap-4 md:grid-cols-2" novalidate><label class="form-field"><span>Nombre</span><input id="clientName" class="form-control" value="${esc(client.name || "")}" required></label><label class="form-field"><span>Correo</span><input id="clientEmail" type="email" class="form-control" value="${esc(client.email || "")}" required></label><label class="form-field"><span>Telefono</span><input id="clientPhone" class="form-control" value="${esc(client.phone || "")}" required></label><label class="form-field"><span>Sucursal</span><select id="clientBranch" class="form-control">${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), client.branchId || "b1")}</select></label><label class="form-field"><span>Estado</span><select id="clientStatus" class="form-control">${options(["Activo", "Inactivo", "Suspendido", "Bloqueado"], client.status || "Activo")}</select></label><label class="form-field"><span>Plan</span><select id="clientPlan" class="form-control">${options(app.data.plans.map((plan) => ({ value: plan.id, label: plan.name })))}</select></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar cliente</button></form>`);
+  }
+
+  function employeeForm(employee = {}) {
+    showModal(employee.id ? "Editar empleado" : "Nuevo empleado", `<form id="employeeForm" data-id="${esc(employee.id || "")}" class="grid gap-4 md:grid-cols-2" novalidate><label class="form-field"><span>Codigo</span><input id="employeeCode" class="form-control" value="${esc(employee.code || `EMP-${String(app.data.employees.length + 1).padStart(3, "0")}`)}" required></label><label class="form-field"><span>Nombre completo</span><input id="employeeName" class="form-control" value="${esc(employee.name || "")}" required></label><label class="form-field"><span>Puesto</span><select id="employeePosition" class="form-control">${options(["Recepcionista", "Coach", "Administrador", "Mantenimiento"], employee.position || "Recepcionista")}</select></label><label class="form-field"><span>Sucursal</span><select id="employeeBranch" class="form-control">${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), employee.branchId || "b1")}</select></label><label class="form-field"><span>Telefono</span><input id="employeePhone" class="form-control" value="${esc(employee.phone || "")}"></label><label class="form-field"><span>Correo</span><input id="employeeEmail" type="email" class="form-control" value="${esc(employee.email || "")}"></label><label class="form-field"><span>Fecha de contratacion</span><input id="employeeHired" type="date" class="form-control" value="${esc(employee.hiredAt || today)}"></label><label class="form-field"><span>Salario base</span><input id="employeeSalary" type="number" class="form-control" value="${esc(employee.baseSalary || 3600)}"></label><label class="form-field"><span>Bonificacion posible</span><input id="employeeBonus" type="number" class="form-control" value="${esc(employee.bonus || 500)}"></label><label class="form-field"><span>Estado</span><select id="employeeStatus" class="form-control">${options(["Activo", "Inactivo", "Suspendido", "Vacaciones"], employee.status || "Activo")}</select></label><label class="form-field md:col-span-2"><span>Horario laboral</span><input id="employeeSchedule" class="form-control" value="${esc(employee.workSchedule || "Lun-Vie 08:00-16:00")}"></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar empleado</button></form>`);
+  }
+
+  function purchaseOrderForm(order = {}) {
+    const first = order.items?.[0] || {};
+    showModal(order.id ? "Editar orden de compra" : "Nueva orden de compra", `<form id="purchaseOrderForm" data-id="${esc(order.id || "")}" class="grid gap-4 md:grid-cols-2" novalidate><label class="form-field"><span>Numero de orden</span><input id="poNumberInput" class="form-control" value="${esc(order.number || `OC-2026-${String(app.data.purchaseOrders.length + 1).padStart(3, "0")}`)}" required></label><label class="form-field"><span>Fecha</span><input id="poDateInput" type="date" class="form-control" value="${esc(order.date || today)}"></label><label class="form-field"><span>Sucursal solicitante</span><select id="poBranchInput" class="form-control">${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), order.branchId || "b1")}</select></label><label class="form-field"><span>Empleado solicitante</span><select id="poRequesterInput" class="form-control">${options(app.data.employees.map((employee) => ({ value: employee.id, label: `${employee.name} / ${employee.position}` })), order.requesterId || app.data.employees[0]?.id)}</select></label><label class="form-field"><span>Proveedor</span><input id="poSupplierInput" class="form-control" value="${esc(order.supplier || "Proveedor demo")}"></label><label class="form-field"><span>Tipo de compra</span><select id="poTypeInput" class="form-control">${options(["Nueva maquina", "Repuesto", "Accesorio", "Equipo de oficina", "Insumo", "Otro"], order.purchaseType || "Nueva maquina")}</select></label><label class="form-field"><span>Articulo principal</span><input id="poItemName" class="form-control" value="${esc(first.name || "")}" required></label><label class="form-field"><span>Cantidad</span><input id="poItemQty" type="number" class="form-control" value="${esc(first.quantity || 1)}"></label><label class="form-field"><span>Precio unitario</span><input id="poItemPrice" type="number" class="form-control" value="${esc(first.unitPrice || 1000)}"></label><label class="form-field"><span>Impuesto</span><input id="poTaxRate" type="number" step="0.01" class="form-control" value="${esc(order.taxRate ?? 0.12)}"></label><label class="form-field"><span>Entrega esperada</span><input id="poExpectedInput" type="date" class="form-control" value="${esc(order.expectedDelivery || "2026-09-30")}"></label><label class="form-field"><span>Estado</span><select id="poStatusInput" class="form-control">${options(["Borrador", "Solicitada", "En revision", "Aprobada", "Rechazada", "Ordenada", "Recibida", "Cancelada"], order.status || "Borrador")}</select></label><label class="form-field md:col-span-2"><span>Motivo de compra</span><textarea id="poReasonInput" class="form-control" rows="2">${esc(order.reason || "")}</textarea></label><label class="form-field md:col-span-2"><span>Observaciones</span><textarea id="poObsInput" class="form-control" rows="2">${esc(order.observations || "")}</textarea></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar orden de compra</button></form>`);
+  }
+
+  function receivePurchaseOrderForm(order) {
+    showModal("Recepcion de equipo", `<form id="receivePurchaseOrderForm" data-id="${esc(order.id)}" class="grid gap-4 md:grid-cols-2"><div class="info-box md:col-span-2"><b>${esc(order.number)} / ${esc(order.purchaseType)}</b><span>${esc(order.items.map((item) => `${item.quantity} x ${item.name}`).join(", "))}</span></div>${order.items.map((item, index) => `<label class="form-field"><span>${esc(item.name)} solicitado</span><input class="form-control" value="${item.quantity}" disabled></label><label class="form-field"><span>Cantidad recibida</span><input id="receiveQty${index}" type="number" class="form-control" value="${item.quantity}"></label>`).join("")}<label class="form-field"><span>Fecha de recepcion</span><input id="receiveDate" type="date" class="form-control" value="${today}"></label><label class="form-field"><span>Entrega</span><select id="receiveComplete" class="form-control">${options(["Completa", "Parcial"], "Completa")}</select></label><label class="form-field md:col-span-2"><span>Incorporar equipos al inventario</span><select id="receiveInventory" class="form-control">${options([{ value: "si", label: "Si, despues de confirmar" }, { value: "no", label: "No" }], "si")}</select></label><label class="form-field md:col-span-2"><span>Observaciones</span><textarea id="receiveObs" class="form-control" rows="3">Entrega revisada por administracion.</textarea></label><button class="btn btn-primary md:col-span-2" type="submit">Confirmar recepcion</button></form>`);
   }
 
   function areaForm(area = {}) {
@@ -448,17 +620,20 @@
 
   function handleSubmit(event) {
     const form = event.target;
-    const managed = ["reservationForm", "branchForm", "clientForm", "areaForm", "machineForm", "maintenanceForm", "finishMaintenanceForm", "paymentForm"];
+    const managed = ["reservationForm", "branchForm", "clientForm", "employeeForm", "areaForm", "machineForm", "maintenanceForm", "finishMaintenanceForm", "paymentForm", "purchaseOrderForm", "receivePurchaseOrderForm"];
     if (!managed.includes(form.id)) return;
     event.preventDefault();
     if (form.id === "reservationForm") return submitReservation();
     if (form.id === "branchForm") return submitBranch(form);
     if (form.id === "clientForm") return submitClient(form);
+    if (form.id === "employeeForm") return submitEmployee(form);
     if (form.id === "areaForm") return submitArea(form);
     if (form.id === "machineForm") return submitMachine(form);
     if (form.id === "maintenanceForm") return submitMaintenance(form);
     if (form.id === "finishMaintenanceForm") return submitFinishMaintenance(form);
     if (form.id === "paymentForm") return submitPayment();
+    if (form.id === "purchaseOrderForm") return submitPurchaseOrder(form);
+    if (form.id === "receivePurchaseOrderForm") return submitReceivePurchaseOrder(form);
   }
 
   function submitReservation() {
@@ -472,7 +647,7 @@
     if (!code || !$("#branchName").value.trim()) return toast("Codigo y nombre son obligatorios.", "error");
     if (app.data.branches.some((branch) => branch.code.toLowerCase() === code.toLowerCase() && branch.id !== form.dataset.id)) return toast("El codigo de sucursal ya existe.", "error");
     const branch = form.dataset.id ? byId("branches", form.dataset.id) : { id: uid("b") };
-    Object.assign(branch, { code, name: $("#branchName").value.trim(), address: $("#branchAddress").value.trim(), phone: $("#branchPhone").value.trim(), email: $("#branchEmail").value.trim(), manager: $("#branchManager").value.trim(), opens: $("#branchOpens").value, closes: $("#branchCloses").value, capacity: Number($("#branchCapacity").value), status: $("#branchStatus").value });
+    Object.assign(branch, { code, name: $("#branchName").value.trim(), address: $("#branchAddress").value.trim(), phone: $("#branchPhone").value.trim(), email: $("#branchEmail").value.trim(), manager: $("#branchManager").value, opens: "04:00", closes: "22:00", weekdayHours: $("#branchWeekdayHours").value.trim(), weekendHours: $("#branchWeekendHours").value.trim(), expectedAttendance: $("#branchExpectedAttendance").value.trim(), capacity: Number($("#branchCapacity").value), status: $("#branchStatus").value });
     if (!form.dataset.id) app.data.branches.unshift(branch);
     window.GymReservations.audit(app.data, app.user, "Sucursales", form.dataset.id ? "Editar sucursal" : "Crear sucursal", branch.name);
     save(); closeModal(); render(); toast("Sucursal guardada.");
@@ -481,7 +656,7 @@
   function submitClient(form) {
     const id = form.dataset.id;
     const client = id ? byId("clients", id) : { id: uid("c"), membershipId: uid("m"), currentAreaId: "" };
-    Object.assign(client, { name: $("#clientName").value.trim(), email: $("#clientEmail").value.trim(), phone: $("#clientPhone").value.trim(), branchId: $("#clientBranch").value, status: $("#clientStatus").value });
+    Object.assign(client, { code: client.code || `CLI-${String(app.data.clients.length + 1).padStart(3, "0")}`, joinedAt: client.joinedAt || today, name: $("#clientName").value.trim(), email: $("#clientEmail").value.trim(), phone: $("#clientPhone").value.trim(), branchId: $("#clientBranch").value, status: $("#clientStatus").value, observations: client.observations || "Sin observaciones registradas." });
     if (!client.name || !client.email) return toast("Nombre y correo son obligatorios.", "error");
     if (!id) {
       app.data.clients.unshift(client);
@@ -489,6 +664,21 @@
     }
     window.GymReservations.audit(app.data, app.user, "Clientes", id ? "Editar cliente" : "Registrar cliente", client.name);
     save(); closeModal(); render(); toast("Cliente guardado.");
+  }
+
+  function submitEmployee(form) {
+    const id = form.dataset.id;
+    const code = $("#employeeCode").value.trim();
+    if (!code || !$("#employeeName").value.trim()) return toast("Codigo y nombre son obligatorios.", "error");
+    if (app.data.employees.some((employee) => employee.code.toLowerCase() === code.toLowerCase() && employee.id !== id)) return toast("El codigo de empleado ya existe.", "error");
+    const employee = id ? byId("employees", id) : { id: uid("e") };
+    Object.assign(employee, { code, name: $("#employeeName").value.trim(), position: $("#employeePosition").value, branchId: $("#employeeBranch").value, phone: $("#employeePhone").value.trim(), email: $("#employeeEmail").value.trim(), hiredAt: $("#employeeHired").value, baseSalary: Number($("#employeeSalary").value), bonus: Number($("#employeeBonus").value), workSchedule: $("#employeeSchedule").value.trim(), status: $("#employeeStatus").value });
+    if (!id) app.data.employees.unshift(employee);
+    if (["Coach", "Recepcionista"].includes(employee.position) && !metricRecord(employee.id)) {
+      app.data.staffMetrics.unshift({ employeeId: employee.id, period: "2026-09", metrics: employee.position === "Coach" ? [{ label: "Sesiones impartidas", goal: 45, result: 0, unit: "sesiones" }, { label: "Asistencia o satisfaccion", goal: 90, result: 0, unit: "%" }] : [{ label: "Membresias o renovaciones gestionadas", goal: 35, result: 0, unit: "gestiones" }, { label: "Pagos o clientes atendidos", goal: 100, result: 0, unit: "atenciones" }], assignedClasses: employee.position === "Coach" ? "Por asignar" : "No aplica", clientsServed: 0, absences: 0, rating: 0 });
+    }
+    window.GymReservations.audit(app.data, app.user, "Empleados", id ? "Editar empleado" : "Crear empleado", employee.name);
+    save(); closeModal(); render(); toast("Empleado guardado.");
   }
 
   function submitArea(form) {
@@ -538,6 +728,32 @@
     save(); closeModal(); render(); toast("Pago registrado.");
   }
 
+  function submitPurchaseOrder(form) {
+    const id = form.dataset.id;
+    const number = $("#poNumberInput").value.trim();
+    if (!number || !$("#poItemName").value.trim()) return toast("Numero de orden y articulo son obligatorios.", "error");
+    if (app.data.purchaseOrders.some((order) => order.number.toLowerCase() === number.toLowerCase() && order.id !== id)) return toast("El numero de orden ya existe.", "error");
+    const order = id ? byId("purchaseOrders", id) : { id: uid("po"), reception: null };
+    Object.assign(order, { number, date: $("#poDateInput").value, branchId: $("#poBranchInput").value, requesterId: $("#poRequesterInput").value, supplier: $("#poSupplierInput").value.trim(), purchaseType: $("#poTypeInput").value, items: [{ name: $("#poItemName").value.trim(), quantity: Number($("#poItemQty").value), unitPrice: Number($("#poItemPrice").value) }], taxRate: Number($("#poTaxRate").value), reason: $("#poReasonInput").value.trim(), expectedDelivery: $("#poExpectedInput").value, observations: $("#poObsInput").value.trim(), status: $("#poStatusInput").value });
+    if (!id) app.data.purchaseOrders.unshift(order);
+    window.GymReservations.audit(app.data, app.user, "Ordenes de compra", id ? "Editar orden" : "Crear orden", order.number);
+    save(); closeModal(); render(); toast("Orden de compra guardada.");
+  }
+
+  function submitReceivePurchaseOrder(form) {
+    const order = byId("purchaseOrders", form.dataset.id);
+    const receivedItems = order.items.map((item, index) => ({ name: item.name, ordered: item.quantity, received: Number($(`#receiveQty${index}`).value) }));
+    order.status = "Recibida";
+    order.reception = { receivedAt: $("#receiveDate").value, complete: $("#receiveComplete").value, inventory: $("#receiveInventory").value === "si", observations: $("#receiveObs").value.trim(), items: receivedItems };
+    window.GymReservations.audit(app.data, app.user, "Ordenes de compra", "Marcar como recibida", order.number);
+    save(); closeModal(); render(); toast("Recepcion registrada.");
+    if (order.purchaseType === "Nueva maquina" && order.reception.inventory && confirm("Continuar al formulario Registrar maquina con datos de la orden?")) {
+      const area = app.data.areas.find((item) => item.branchId === order.branchId) || app.data.areas[0];
+      const first = order.items[0] || {};
+      machineForm({ code: `MA-${Date.now().toString().slice(-4)}`, name: first.name || "Nueva maquina", type: "Equipo", areaId: area?.id, brand: order.supplier, model: order.number, simultaneousCapacity: 1, acquiredAt: order.reception.receivedAt, lastMaintenance: order.reception.receivedAt, nextMaintenance: "2026-12-10", notes: `Origen ${order.number}. ${order.observations || ""}`, status: "Disponible" });
+    }
+  }
+
   function closeModal() {
     $("#modalRoot").classList.add("hidden");
     $("#modalRoot").innerHTML = "";
@@ -548,16 +764,22 @@
     if (!el) return;
     const action = el.dataset.action;
     const id = el.dataset.id;
-    if (action === "close-modal") return closeModal();
+    if (action === "close-modal") {
+      if (el.classList.contains("modal-backdrop") && event.target !== el) return;
+      return closeModal();
+    }
     if (action === "logout") return logout();
     if (action === "restore-demo") return restoreDemo();
     if (action === "open-reservation") return reservationForm();
     if (action === "open-branch") return branchForm(id ? byId("branches", id) : {});
     if (action === "open-client") return clientForm(id ? byId("clients", id) : {});
+    if (action === "open-employee") return employeeForm(id ? byId("employees", id) : {});
     if (action === "open-area") return areaForm(id ? byId("areas", id) : {});
     if (action === "open-machine") return machineForm(id ? byId("machines", id) : {});
     if (action === "open-maintenance") return maintenanceForm(id ? byId("maintenance", id) : {});
     if (action === "open-payment") return paymentForm();
+    if (action === "open-purchase-order") return purchaseOrderForm(id ? byId("purchaseOrders", id) : {});
+    if (action === "go-staff-metrics") { app.view = "staffMetrics"; return render(); }
     if (action === "inventory-tab") { app.filters.inventoryTab = el.dataset.tab; return render(); }
     if (action === "report-tab") { app.filters.reportTab = el.dataset.tab; return render(); }
     if (action === "branch-detail") return branchDetail(id);
@@ -565,6 +787,9 @@
     if (action === "toggle-branch") return toggleBranch(id);
     if (action === "client-detail") return clientDetail(id);
     if (action === "toggle-client") return toggleClient(id);
+    if (action === "client-status") return setClientStatus(id, el.dataset.next);
+    if (action === "employee-detail") return employeeDetail(id);
+    if (action === "employee-status") return setEmployeeStatus(id, el.dataset.next);
     if (action === "area-detail") return areaDetail(id);
     if (action === "cycle-area-status") return cycleAreaStatus(id);
     if (action === "machine-detail") return machineDetail(id);
@@ -576,8 +801,11 @@
     if (action === "start-maintenance") return startMaintenance(id);
     if (action === "finish-maintenance") return finishMaintenanceForm(byId("maintenance", id));
     if (action === "cancel-maintenance") return cancelMaintenance(id);
+    if (action === "purchase-order-detail") return purchaseOrderDetail(id);
+    if (action === "purchase-order-status") return changePurchaseOrderStatus(id, el.dataset.next);
+    if (action === "receive-purchase-order") return receivePurchaseOrderForm(byId("purchaseOrders", id));
     if (action === "print-report") return window.print();
-    if (action === "export-report") return exportCsv(app.data.payments, "gymcore-reporte.csv");
+    if (action === "export-report") return exportCsv(app.data.payments, "renovatio-gym-reporte.csv");
     if (action === "download-report") return downloadReport();
   }
 
@@ -605,7 +833,7 @@
     const scheduleIds = app.data.schedules.filter((schedule) => schedule.branchId === id).map((schedule) => schedule.id);
     const reservations = app.data.reservations.filter((reservation) => scheduleIds.includes(reservation.scheduleId));
     const income = app.data.payments.filter((payment) => payment.branchId === id && payment.status === "Pagado").reduce((sum, payment) => sum + Number(payment.amount), 0);
-    showModal("Detalle de sucursal", `<dl class="detail-grid"><div><dt>Codigo</dt><dd>${esc(branch.code)}</dd></div><div><dt>Estado</dt><dd>${badge(branch.status)}</dd></div><div><dt>Encargado</dt><dd>${esc(branch.manager)}</dd></div><div><dt>Ingresos</dt><dd>Q${income}</dd></div><div><dt>Areas</dt><dd>${areas.length}</dd></div><div><dt>Maquinas</dt><dd>${machines.length}</dd></div><div><dt>Clientes</dt><dd>${clients.length}</dd></div><div><dt>Reservas</dt><dd>${reservations.length}</dd></div></dl>`);
+    showModal("Detalle de sucursal", `<dl class="detail-grid"><div><dt>Codigo</dt><dd>${esc(branch.code)}</dd></div><div><dt>Estado</dt><dd>${badge(branch.status)}</dd></div><div><dt>Encargado</dt><dd>${esc(branch.manager)}</dd></div><div><dt>Ingresos</dt><dd>Q${income}</dd></div><div><dt>Horario lunes-viernes</dt><dd>${esc(branch.weekdayHours)}</dd></div><div><dt>Horario sabado-domingo</dt><dd>${esc(branch.weekendHours)}</dd></div><div><dt>Aforo esperado</dt><dd>${esc(branch.expectedAttendance)}</dd></div><div><dt>Capacidad</dt><dd>${branch.capacity}</dd></div><div><dt>Areas</dt><dd>${areas.length}</dd></div><div><dt>Maquinas</dt><dd>${machines.length}</dd></div><div><dt>Clientes</dt><dd>${clients.length}</dd></div><div><dt>Reservas</dt><dd>${reservations.length}</dd></div></dl>`);
   }
 
   function toggleBranch(id) {
@@ -619,13 +847,54 @@
   function clientDetail(id) {
     const client = byId("clients", id);
     const membership = window.GymRules.membershipFor(app.data, id);
-    showModal("Detalle de cliente", `<dl class="detail-grid"><div><dt>Correo</dt><dd>${esc(client.email)}</dd></div><div><dt>Estado</dt><dd>${badge(client.status)}</dd></div><div><dt>Membresia</dt><dd>${membership ? badge(membership.status) : "Sin membresia"}</dd></div><div><dt>Sucursal</dt><dd>${branchName(client.branchId)}</dd></div></dl><h3 class="mt-5 font-black">Reservas</h3>${reservationTable(app.data.reservations.filter((reservation) => reservation.clientId === id))}`);
+    const memberships = app.data.memberships.filter((item) => item.clientId === id || item.id === client.membershipId);
+    const payments = app.data.payments.filter((payment) => payment.clientId === id);
+    const reservations = app.data.reservations.filter((reservation) => reservation.clientId === id);
+    const attendance = reservations.filter((reservation) => ["Completada", "No asistio"].includes(reservation.status));
+    showModal("Detalle de cliente", `<dl class="detail-grid"><div><dt>Codigo</dt><dd>${esc(client.code)}</dd></div><div><dt>Nombre</dt><dd>${esc(client.name)}</dd></div><div><dt>Telefono</dt><dd>${esc(client.phone)}</dd></div><div><dt>Correo</dt><dd>${esc(client.email)}</dd></div><div><dt>Sucursal</dt><dd>${branchName(client.branchId)}</dd></div><div><dt>Inscripcion</dt><dd>${client.joinedAt}</dd></div><div><dt>Estado</dt><dd>${badge(client.status)}</dd></div><div><dt>Membresia actual</dt><dd>${membership ? `${planName(membership.planId)} / ${membership.endDate}` : "Sin membresia"}</dd></div></dl><h3 class="mt-5 font-black">Historial de membresias</h3>${simpleTable(["Plan", "Vigencia", "Estado"], memberships.map((item) => [planName(item.planId), `${item.startDate} al ${item.endDate}`, item.status]))}<h3 class="mt-5 font-black">Historial de pagos</h3>${simpleTable(["Fecha", "Comprobante", "Monto", "Estado"], payments.map((item) => [item.date, item.receipt, money(item.amount), item.status]))}<h3 class="mt-5 font-black">Reservas</h3>${reservationTable(reservations)}<h3 class="mt-5 font-black">Asistencias</h3>${simpleTable(["Horario", "Resultado"], attendance.map((item) => [`${scheduleOf(item)?.date || ""} ${scheduleOf(item)?.start || ""}`, item.status]))}<h3 class="mt-5 font-black">Observaciones</h3><p class="mt-2 text-sm text-slate-600">${esc(client.observations)}</p>`);
   }
 
   function toggleClient(id) {
     const client = byId("clients", id);
     client.status = client.status === "Activo" ? "Suspendido" : "Activo";
     save(); render(); toast(`Cliente ${client.status.toLowerCase()}.`);
+  }
+
+  function simpleTable(headers, rows) {
+    return `<div class="table-wrap mt-3"><table><thead><tr>${headers.map((head) => `<th>${esc(head)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${esc(cell)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${headers.length}" class="empty">Sin registros.</td></tr>`}</tbody></table></div>`;
+  }
+
+  function setClientStatus(id, next) {
+    const client = byId("clients", id);
+    client.status = next;
+    save(); render(); toast(`Cliente ${next.toLowerCase()}.`);
+  }
+
+  function employeeDetail(id) {
+    const employee = byId("employees", id);
+    const state = bonusState(employee);
+    showModal("Detalle de empleado", `<dl class="detail-grid"><div><dt>Codigo</dt><dd>${esc(employee.code)}</dd></div><div><dt>Nombre</dt><dd>${esc(employee.name)}</dd></div><div><dt>Puesto</dt><dd>${esc(employee.position)}</dd></div><div><dt>Sucursal</dt><dd>${branchName(employee.branchId)}</dd></div><div><dt>Telefono</dt><dd>${esc(employee.phone)}</dd></div><div><dt>Correo</dt><dd>${esc(employee.email)}</dd></div><div><dt>Contratacion</dt><dd>${employee.hiredAt}</dd></div><div><dt>Estado</dt><dd>${badge(employee.status)}</dd></div><div><dt>Salario base</dt><dd>${money(employee.baseSalary)}</dd></div><div><dt>Horario</dt><dd>${esc(employee.workSchedule)}</dd></div></dl>${["Coach", "Recepcionista"].includes(employee.position) ? staffMetricDetail(employee, state) : ""}`);
+  }
+
+  function setEmployeeStatus(id, next) {
+    const employee = byId("employees", id);
+    employee.status = next;
+    save(); render(); toast(`Empleado ${next.toLowerCase()}.`);
+  }
+
+  function purchaseOrderDetail(id) {
+    const order = byId("purchaseOrders", id);
+    const rows = (order.items || []).map((item) => [item.name, item.quantity, money(item.unitPrice), money(item.quantity * item.unitPrice)]);
+    showModal("Detalle de orden de compra", `<dl class="detail-grid"><div><dt>Numero</dt><dd>${esc(order.number)}</dd></div><div><dt>Fecha</dt><dd>${order.date}</dd></div><div><dt>Sucursal</dt><dd>${branchName(order.branchId)}</dd></div><div><dt>Solicitante</dt><dd>${employeeName(order.requesterId)}</dd></div><div><dt>Proveedor</dt><dd>${esc(order.supplier)}</dd></div><div><dt>Tipo</dt><dd>${esc(order.purchaseType)}</dd></div><div><dt>Entrega esperada</dt><dd>${order.expectedDelivery}</dd></div><div><dt>Estado</dt><dd>${badge(order.status)}</dd></div><div><dt>Subtotal</dt><dd>${money(orderSubtotal(order))}</dd></div><div><dt>Impuestos</dt><dd>${money(orderTax(order))}</dd></div><div><dt>Total</dt><dd>${money(orderTotal(order))}</dd></div><div><dt>Motivo</dt><dd>${esc(order.reason)}</dd></div></dl><h3 class="mt-5 font-black">Articulos</h3>${simpleTable(["Articulo", "Cantidad", "Precio unitario", "Subtotal"], rows)}<h3 class="mt-5 font-black">Observaciones</h3><p class="mt-2 text-sm text-slate-600">${esc(order.observations || "Sin observaciones.")}</p>${order.reception ? `<h3 class="mt-5 font-black">Recepcion</h3><dl class="detail-grid mt-3"><div><dt>Fecha</dt><dd>${order.reception.receivedAt}</dd></div><div><dt>Entrega</dt><dd>${order.reception.complete}</dd></div><div><dt>Inventario</dt><dd>${order.reception.inventory ? "Si" : "No"}</dd></div><div><dt>Observaciones</dt><dd>${esc(order.reception.observations)}</dd></div></dl>` : ""}`);
+  }
+
+  function changePurchaseOrderStatus(id, next) {
+    const order = byId("purchaseOrders", id);
+    const allowed = window.GymRules.purchaseOrderFlow[order.status] || [];
+    if (!allowed.includes(next)) return toast("Transicion de orden no permitida.", "error");
+    order.status = next;
+    window.GymReservations.audit(app.data, app.user, "Ordenes de compra", `Estado -> ${next}`, order.number);
+    save(); render(); toast("Estado de orden actualizado.");
   }
 
   function areaDetail(id) {
@@ -711,10 +980,10 @@
   }
 
   function downloadReport() {
-    const blob = new Blob([`GymCore reporte\nGenerado: ${new Date().toLocaleString()}\nRegistros de pago: ${app.data.payments.length}`], { type: "text/plain;charset=utf-8" });
+    const blob = new Blob([`Renovatio Gym reporte\nGenerado: ${new Date().toLocaleString()}\nRegistros de pago: ${app.data.payments.length}`], { type: "text/plain;charset=utf-8" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = "gymcore-reporte.txt";
+    link.download = "renovatio-gym-reporte.txt";
     link.click();
     URL.revokeObjectURL(link.href);
     toast("Reporte descargado.");
@@ -725,6 +994,9 @@
     const value = event.target.value;
     const simpleMap = {
       clientFilter: ["client", null], clientStatusFilter: ["clientStatus", null],
+      clientBranchFilter: ["clientBranch", null], clientMembershipFilter: ["clientMembership", null],
+      employeeSearch: ["employeeSearch", null], employeeBranchFilter: ["employeeBranch", null], employeePositionFilter: ["employeePosition", null], employeeStatusFilter: ["employeeStatus", null],
+      staffEmployeeSelect: ["staffEmployee", null],
       branchSearch: ["branchSearch", null], branchStatusFilter: ["branchStatus", null],
       inventoryBranch: ["inventoryBranch", null], inventorySearch: ["inventorySearch", null], inventoryType: ["inventoryType", null], inventoryState: ["inventoryState", null],
       dashboardBranch: ["dashboardBranch", null]
@@ -744,6 +1016,12 @@
     if (reportMap[id]) {
       app.filters.report = app.filters.report || {};
       app.filters.report[reportMap[id]] = value;
+      return render();
+    }
+    const poMap = { poSearch: "search", poBranch: "branch", poSupplier: "supplier", poDate: "date", poStatus: "status" };
+    if (poMap[id]) {
+      app.filters.purchaseOrders = app.filters.purchaseOrders || {};
+      app.filters.purchaseOrders[poMap[id]] = value;
       return render();
     }
   }

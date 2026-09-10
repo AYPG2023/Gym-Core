@@ -1,13 +1,13 @@
 window.GYM_SEED = {
   users: [
     { id: "u-admin", name: "Valeria Rivas", email: "admin@gym.test", role: "admin", status: "Activo" },
-    { id: "u-recep", name: "Mario Escobar", email: "recepcion@gym.test", role: "reception", status: "Activo" },
-    { id: "u-trainer", name: "Lucia Mendez", email: "trainer@gym.test", role: "trainer", trainerId: "t1", status: "Activo" },
+    { id: "u-recep", name: "Mario Escobar", email: "recepcion@gym.test", role: "reception", employeeId: "e5", status: "Activo" },
+    { id: "u-trainer", name: "Lucia Mendez", email: "trainer@gym.test", role: "trainer", trainerId: "t1", employeeId: "e1", status: "Activo" },
     { id: "u-client", name: "Ana Lopez", email: "cliente@gym.test", role: "client", clientId: "c1", status: "Activo" }
   ],
   branches: [
-    { id: "b1", code: "Z10", name: "Zona 10 Performance", address: "Avenida Reforma 10-45", phone: "2410-1000", email: "zona10@gym.test", manager: "Valeria Rivas", opens: "05:00", closes: "22:00", capacity: 62, status: "Activa" },
-    { id: "b2", code: "MJD", name: "Majadas Athletic", address: "Calzada Roosevelt 26-70", phone: "2410-2000", email: "majadas@gym.test", manager: "Mario Escobar", opens: "06:00", closes: "21:00", capacity: 50, status: "Activa" }
+    { id: "b1", code: "Z10", name: "Zona 10 Performance", address: "Avenida Reforma 10-45", phone: "2410-1000", email: "zona10@gym.test", manager: "Valeria Rivas", opens: "04:00", closes: "22:00", weekdayHours: "Lunes-viernes 04:00-22:00", weekendHours: "Sabados y domingos 06:00-14:00", expectedAttendance: "75-100 personas, con expectativa de crecimiento", capacity: 100, status: "Activa" },
+    { id: "b2", code: "MJD", name: "Majadas Athletic", address: "Calzada Roosevelt 26-70", phone: "2410-2000", email: "majadas@gym.test", manager: "Mario Escobar", opens: "04:00", closes: "22:00", weekdayHours: "Lunes-viernes 04:00-22:00", weekendHours: "Sabados y domingos 06:00-14:00", expectedAttendance: "75-100 personas, con expectativa de crecimiento", capacity: 100, status: "Activa" }
   ],
   plans: [
     { id: "p1", name: "Basica", price: 180, durationDays: 30, areas: ["a1", "a2", "a7"], reservationLimit: 4, status: "Activa" },
@@ -16,20 +16,41 @@ window.GYM_SEED = {
     { id: "p4", name: "Anual Corporate", price: 2600, durationDays: 365, areas: ["a1", "a2", "a3", "a4", "a5", "a6", "a7"], reservationLimit: 20, status: "Activa" }
   ],
   clients: [
-    { id: "c1", name: "Ana Lopez", email: "ana@gym.test", phone: "5551-2001", status: "Activo", branchId: "b1", membershipId: "m1", currentAreaId: "a1" },
-    { id: "c2", name: "Carlos Ruiz", email: "carlos@gym.test", phone: "5551-2002", status: "Activo", branchId: "b1", membershipId: "m2", currentAreaId: "a2" },
-    { id: "c3", name: "Sofia Garcia", email: "sofia@gym.test", phone: "5551-2003", status: "Activo", branchId: "b2", membershipId: "m3", currentAreaId: "a3" },
-    { id: "c4", name: "Jose Martinez", email: "jose@gym.test", phone: "5551-2004", status: "Suspendido", branchId: "b1", membershipId: "m4", currentAreaId: "" },
-    { id: "c5", name: "Marta Perez", email: "marta@gym.test", phone: "5551-2005", status: "Activo", branchId: "b2", membershipId: "m5", currentAreaId: "a5" },
-    { id: "c6", name: "Daniel Torres", email: "daniel@gym.test", phone: "5551-2006", status: "Inactivo", branchId: "b1", membershipId: "m6", currentAreaId: "" },
-    { id: "c7", name: "Elena Castillo", email: "elena@gym.test", phone: "5551-2007", status: "Bloqueado", branchId: "b2", membershipId: "m7", currentAreaId: "" },
-    { id: "c8", name: "Ricardo Flores", email: "ricardo@gym.test", phone: "5551-2008", status: "Activo", branchId: "b1", membershipId: "m8", currentAreaId: "a4" }
+    { id: "c1", code: "CLI-001", name: "Ana Lopez", email: "ana@gym.test", phone: "5551-2001", joinedAt: "2026-01-12", status: "Activo", branchId: "b1", membershipId: "m1", currentAreaId: "a1", observations: "Prefiere entrenar temprano." },
+    { id: "c2", code: "CLI-002", name: "Carlos Ruiz", email: "carlos@gym.test", phone: "5551-2002", joinedAt: "2026-02-03", status: "Activo", branchId: "b1", membershipId: "m2", currentAreaId: "a2", observations: "Renovacion pendiente esta semana." },
+    { id: "c3", code: "CLI-003", name: "Sofia Garcia", email: "sofia@gym.test", phone: "5551-2003", joinedAt: "2026-03-18", status: "Activo", branchId: "b2", membershipId: "m3", currentAreaId: "a3", observations: "Asiste a spinning." },
+    { id: "c4", code: "CLI-004", name: "Jose Martinez", email: "jose@gym.test", phone: "5551-2004", joinedAt: "2026-04-02", status: "Suspendido", branchId: "b1", membershipId: "m4", currentAreaId: "", observations: "Suspension temporal solicitada." },
+    { id: "c5", code: "CLI-005", name: "Marta Perez", email: "marta@gym.test", phone: "5551-2005", joinedAt: "2026-01-02", status: "Activo", branchId: "b2", membershipId: "m5", currentAreaId: "a5", observations: "Cliente anual corporativo." },
+    { id: "c6", code: "CLI-006", name: "Daniel Torres", email: "daniel@gym.test", phone: "5551-2006", joinedAt: "2026-05-20", status: "Inactivo", branchId: "b1", membershipId: "m6", currentAreaId: "", observations: "Membresia vencida." },
+    { id: "c7", code: "CLI-007", name: "Elena Castillo", email: "elena@gym.test", phone: "5551-2007", joinedAt: "2026-06-07", status: "Bloqueado", branchId: "b2", membershipId: "m7", currentAreaId: "", observations: "Cuenta bloqueada por revision administrativa." },
+    { id: "c8", code: "CLI-008", name: "Ricardo Flores", email: "ricardo@gym.test", phone: "5551-2008", joinedAt: "2026-07-14", status: "Activo", branchId: "b1", membershipId: "m8", currentAreaId: "a4", observations: "Entrena CrossFit." }
   ],
   trainers: [
     { id: "t1", name: "Lucia Mendez", specialty: "Funcional", status: "Activo", branchId: "b1" },
     { id: "t2", name: "Esteban Cano", specialty: "Pesas", status: "Activo", branchId: "b1" },
     { id: "t3", name: "Paola Herrera", specialty: "Spinning", status: "Activo", branchId: "b2" },
     { id: "t4", name: "Hugo Diaz", specialty: "CrossFit", status: "Activo", branchId: "b2" }
+  ],
+  employees: [
+    { id: "e1", code: "EMP-001", name: "Lucia Mendez", position: "Coach", branchId: "b1", phone: "5601-1001", email: "lucia@gym.test", hiredAt: "2024-03-01", baseSalary: 4500, workSchedule: "Lun-Vie 06:00-14:00", status: "Activo", trainerId: "t1", bonus: 750 },
+    { id: "e2", code: "EMP-002", name: "Esteban Cano", position: "Coach", branchId: "b1", phone: "5601-1002", email: "esteban@gym.test", hiredAt: "2023-11-15", baseSalary: 4700, workSchedule: "Lun-Sab 14:00-21:00", status: "Activo", trainerId: "t2", bonus: 800 },
+    { id: "e3", code: "EMP-003", name: "Paola Herrera", position: "Coach", branchId: "b2", phone: "5601-1003", email: "paola@gym.test", hiredAt: "2025-01-10", baseSalary: 4300, workSchedule: "Lun-Vie 17:00-21:00", status: "Vacaciones", trainerId: "t3", bonus: 700 },
+    { id: "e4", code: "EMP-004", name: "Hugo Diaz", position: "Coach", branchId: "b2", phone: "5601-1004", email: "hugo@gym.test", hiredAt: "2022-08-20", baseSalary: 4800, workSchedule: "Lun-Sab 06:00-12:00", status: "Activo", trainerId: "t4", bonus: 850 },
+    { id: "e5", code: "EMP-005", name: "Mario Escobar", position: "Recepcionista", branchId: "b2", phone: "5601-2001", email: "mario@gym.test", hiredAt: "2024-06-12", baseSalary: 3800, workSchedule: "Lun-Vie 08:00-16:00", status: "Activo", bonus: 600 },
+    { id: "e6", code: "EMP-006", name: "Andrea Lima", position: "Recepcionista", branchId: "b1", phone: "5601-2002", email: "andrea@gym.test", hiredAt: "2025-02-03", baseSalary: 3600, workSchedule: "Lun-Sab 06:00-13:00", status: "Activo", bonus: 550 },
+    { id: "e7", code: "EMP-007", name: "Diego Paredes", position: "Recepcionista", branchId: "b1", phone: "5601-2003", email: "diego@gym.test", hiredAt: "2025-09-01", baseSalary: 3500, workSchedule: "Lun-Vie 13:00-21:00", status: "Suspendido", bonus: 500 },
+    { id: "e8", code: "EMP-008", name: "Valeria Rivas", position: "Administrador", branchId: "b1", phone: "5601-3001", email: "valeria@gym.test", hiredAt: "2021-05-15", baseSalary: 7200, workSchedule: "Lun-Vie 09:00-18:00", status: "Activo", bonus: 0 },
+    { id: "e9", code: "EMP-009", name: "Roberto Najera", position: "Administrador", branchId: "b2", phone: "5601-3002", email: "roberto@gym.test", hiredAt: "2022-10-12", baseSalary: 6900, workSchedule: "Lun-Vie 09:00-18:00", status: "Activo", bonus: 0 },
+    { id: "e10", code: "EMP-010", name: "Claudia Moran", position: "Mantenimiento", branchId: "b1", phone: "5601-4001", email: "claudia@gym.test", hiredAt: "2023-04-19", baseSalary: 3400, workSchedule: "Lun-Sab 07:00-15:00", status: "Inactivo", bonus: 0 }
+  ],
+  staffMetrics: [
+    { employeeId: "e1", period: "2026-09", metrics: [{ label: "Sesiones impartidas", goal: 48, result: 52, unit: "sesiones" }, { label: "Asistencia o satisfaccion", goal: 90, result: 94, unit: "%" }], assignedClasses: "Funcional, HIIT", clientsServed: 86, absences: 1, rating: 4.8 },
+    { employeeId: "e2", period: "2026-09", metrics: [{ label: "Sesiones impartidas", goal: 54, result: 58, unit: "sesiones" }, { label: "Asistencia o satisfaccion", goal: 92, result: 87, unit: "%" }], assignedClasses: "Pesas, tecnica", clientsServed: 74, absences: 2, rating: 4.5 },
+    { employeeId: "e3", period: "2026-09", metrics: [{ label: "Sesiones impartidas", goal: 42, result: 31, unit: "sesiones" }, { label: "Asistencia o satisfaccion", goal: 90, result: 84, unit: "%" }], assignedClasses: "Spinning", clientsServed: 52, absences: 4, rating: 4.2 },
+    { employeeId: "e4", period: "2026-09", metrics: [{ label: "Sesiones impartidas", goal: 50, result: 55, unit: "sesiones" }, { label: "Asistencia o satisfaccion", goal: 91, result: 93, unit: "%" }], assignedClasses: "CrossFit, movilidad", clientsServed: 91, absences: 0, rating: 4.9 },
+    { employeeId: "e5", period: "2026-09", metrics: [{ label: "Membresias o renovaciones gestionadas", goal: 40, result: 44, unit: "gestiones" }, { label: "Pagos o clientes atendidos", goal: 120, result: 132, unit: "atenciones" }], clientsServed: 132, absences: 0, rating: 4.7 },
+    { employeeId: "e6", period: "2026-09", metrics: [{ label: "Membresias o renovaciones gestionadas", goal: 38, result: 41, unit: "gestiones" }, { label: "Pagos o clientes atendidos", goal: 115, result: 102, unit: "atenciones" }], clientsServed: 102, absences: 1, rating: 4.4 },
+    { employeeId: "e7", period: "2026-09", metrics: [{ label: "Membresias o renovaciones gestionadas", goal: 35, result: 22, unit: "gestiones" }, { label: "Pagos o clientes atendidos", goal: 110, result: 76, unit: "atenciones" }], clientsServed: 76, absences: 3, rating: 3.9 }
   ],
   areas: [
     { id: "a1", name: "Cardio", description: "Caminadoras, elipticas y bicicletas.", branchId: "b1", capacity: 20, schedule: "05:00-22:00", status: "Disponible" },
@@ -97,6 +118,14 @@ window.GYM_SEED = {
     { id: "pay5", clientId: "c3", branchId: "b2", planId: "p3", amount: 850, date: "2026-09-04", method: "Transferencia", receipt: "FAC-1005", status: "Pagado" },
     { id: "pay6", clientId: "c8", branchId: "b1", planId: "p3", amount: 850, date: "2026-09-05", method: "Tarjeta", receipt: "FAC-1006", status: "Pendiente" },
     { id: "pay7", clientId: "c6", branchId: "b1", planId: "p1", amount: 180, date: "2026-07-01", method: "Efectivo", receipt: "FAC-0980", status: "Anulado" }
+  ],
+  purchaseOrders: [
+    { id: "po1", number: "OC-2026-001", date: "2026-09-01", branchId: "b1", requesterId: "e8", supplier: "FitMachines GT", purchaseType: "Nueva maquina", items: [{ name: "Caminadora comercial", quantity: 2, unitPrice: 14500 }], taxRate: 0.12, reason: "Ampliacion de cardio Zona 10", expectedDelivery: "2026-09-20", observations: "Instalacion incluida.", status: "Ordenada", reception: null },
+    { id: "po2", number: "OC-2026-002", date: "2026-09-02", branchId: "b2", requesterId: "e9", supplier: "Repuestos ProGym", purchaseType: "Repuesto", items: [{ name: "Cable de polea", quantity: 4, unitPrice: 320 }, { name: "Rodamientos", quantity: 8, unitPrice: 95 }], taxRate: 0.12, reason: "Mantenimiento correctivo", expectedDelivery: "2026-09-12", observations: "Prioridad alta.", status: "En revision", reception: null },
+    { id: "po3", number: "OC-2026-003", date: "2026-08-25", branchId: "b1", requesterId: "e10", supplier: "OfficeFit", purchaseType: "Equipo de oficina", items: [{ name: "Silla ergonomica", quantity: 3, unitPrice: 850 }], taxRate: 0.12, reason: "Recepcion administrativa", expectedDelivery: "2026-09-05", observations: "Recibido en bodega.", status: "Recibida", reception: { receivedAt: "2026-09-05", complete: "Completa", inventory: false, observations: "Entrega completa.", items: [{ name: "Silla ergonomica", ordered: 3, received: 3 }] } },
+    { id: "po4", number: "OC-2026-004", date: "2026-09-06", branchId: "b2", requesterId: "e5", supplier: "Accesorios Sport", purchaseType: "Accesorio", items: [{ name: "Mat de yoga", quantity: 20, unitPrice: 110 }, { name: "Bandas elasticas", quantity: 30, unitPrice: 45 }], taxRate: 0.12, reason: "Renovar salon de clases", expectedDelivery: "2026-09-18", observations: "", status: "Solicitada", reception: null },
+    { id: "po5", number: "OC-2026-005", date: "2026-09-08", branchId: "b1", requesterId: "e6", supplier: "Limpieza Total", purchaseType: "Insumo", items: [{ name: "Desinfectante galon", quantity: 12, unitPrice: 75 }], taxRate: 0.12, reason: "Consumo mensual", expectedDelivery: "2026-09-11", observations: "Compra recurrente.", status: "Aprobada", reception: null },
+    { id: "po6", number: "OC-2026-006", date: "2026-09-09", branchId: "b2", requesterId: "e3", supplier: "Bike Studio", purchaseType: "Nueva maquina", items: [{ name: "Bicicleta indoor", quantity: 5, unitPrice: 6200 }], taxRate: 0.12, reason: "Reemplazo de bicicletas antiguas", expectedDelivery: "2026-10-01", observations: "Cotizacion pendiente de ajuste.", status: "Rechazada", reception: null }
   ],
   audit: [
     { id: "log1", at: "2026-09-09 08:03", user: "Sistema", module: "Reservas", action: "Confirmar reserva", detail: "Ana Lopez / Cardio" }
