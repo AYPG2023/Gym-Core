@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GymCore | Gestion de gimnasio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: "#111827",
+            graphite: "#1f2937",
+            steel: "#475569",
+            limefit: "#a3e635",
+            aqua: "#14b8a6",
+            flame: "#f97316",
+            mist: "#f8fafc",
+            line: "#e2e8f0"
+          },
+          boxShadow: {
+            panel: "0 18px 46px rgba(15, 23, 42, .10)"
+          }
+        }
+      }
+    };
+  </script>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body class="bg-mist text-slate-900">
+  <div id="toastStack" class="fixed right-4 top-4 z-[90] grid gap-2"></div>
+
+  <main id="loginView" class="min-h-screen">
+    <section class="grid min-h-screen lg:grid-cols-[1fr_500px]">
+      <div class="hero-login relative flex min-h-[44vh] items-end overflow-hidden bg-ink p-6 text-white sm:p-10 lg:min-h-screen">
+        <img src="assets/login.jpg" alt="Gimnasio moderno" class="absolute inset-0 h-full w-full object-cover opacity-35">
+        <div class="absolute inset-0 bg-gradient-to-t from-ink via-ink/84 to-ink/30"></div>
+        <div class="relative max-w-3xl pb-5">
+          <span class="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-sm font-bold backdrop-blur">
+            <i data-lucide="dumbbell" class="h-4 w-4"></i>
+            Administracion academica funcional
+          </span>
+          <h1 class="mt-5 text-4xl font-black tracking-tight sm:text-6xl">GymCore</h1>
+          <p class="mt-4 max-w-2xl text-lg leading-8 text-white/82">Reservas, membresias, capacidad, pagos, mantenimiento y reportes en un prototipo frontend completo con LocalStorage.</p>
+          <div class="mt-8 grid max-w-3xl gap-3 sm:grid-cols-3">
+            <div class="glass-tile"><b>Capacidad</b><small>Cupos calculados por area, maquinas y reservas.</small></div>
+            <div class="glass-tile"><b>Estados</b><small>Flujos visuales para reservas, maquinas y membresias.</small></div>
+            <div class="glass-tile"><b>Roles</b><small>Vistas y acciones segun perfil de usuario.</small></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-center p-5">
+        <form id="loginForm" class="panel w-full max-w-md p-6 sm:p-8" novalidate>
+          <p class="eyebrow">Acceso simulado</p>
+          <h2 class="mt-2 text-2xl font-black text-ink">Iniciar sesion</h2>
+          <p class="mt-2 text-sm text-slate-600">Selecciona una cuenta de demostracion. Clave: <strong>Gym2026!</strong></p>
+          <label class="form-field">
+            <span>Usuario</span>
+            <select id="loginUser" class="form-control" required></select>
+          </label>
+          <label class="form-field">
+            <span>Contrasena</span>
+            <input id="loginPassword" class="form-control" type="password" value="Gym2026!" required>
+          </label>
+          <button class="btn btn-primary mt-5 w-full" type="submit">
+            <i data-lucide="log-in" class="h-5 w-5"></i>
+            Entrar al sistema
+          </button>
+          <button class="btn btn-ghost mt-3 w-full" type="button" data-action="restore-demo">
+            <i data-lucide="rotate-ccw" class="h-5 w-5"></i>
+            Restaurar datos demo
+          </button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <div id="appView" class="hidden min-h-screen">
+    <header class="sticky top-0 z-40 border-b border-line bg-white/95 backdrop-blur lg:hidden">
+      <div class="flex items-center justify-between px-4 py-3">
+        <button id="mobileMenuButton" class="icon-btn" type="button" aria-label="Abrir menu"><i data-lucide="menu" class="h-5 w-5"></i></button>
+        <strong class="text-ink">GymCore</strong>
+        <button class="icon-btn" type="button" data-action="logout" aria-label="Cerrar sesion"><i data-lucide="log-out" class="h-5 w-5"></i></button>
+      </div>
+      <nav id="mobileNav" class="hidden border-t border-line p-3"></nav>
+    </header>
+
+    <div class="lg:grid lg:min-h-screen lg:grid-cols-[280px_1fr]">
+      <aside class="hidden border-r border-white/10 bg-ink text-white lg:block">
+        <div class="sticky top-0 flex h-screen flex-col p-4">
+          <div class="mb-5 flex items-center gap-3 px-1">
+            <div class="grid h-11 w-11 place-items-center rounded-lg bg-limefit text-ink">
+              <i data-lucide="activity" class="h-6 w-6"></i>
+            </div>
+            <div>
+              <p class="font-black leading-tight">GymCore</p>
+              <p id="activeUserLabel" class="text-xs text-white/65"></p>
+            </div>
+          </div>
+          <nav id="desktopNav" class="space-y-1 overflow-y-auto pr-1"></nav>
+          <button type="button" data-action="restore-demo" class="btn-sidebar mt-auto"><i data-lucide="refresh-cw" class="h-5 w-5"></i><span>Restaurar demo</span></button>
+          <button type="button" data-action="logout" class="btn-sidebar"><i data-lucide="log-out" class="h-5 w-5"></i><span>Cerrar sesion</span></button>
+        </div>
+      </aside>
+
+      <section class="min-w-0">
+        <header class="hidden border-b border-line bg-white px-6 py-4 lg:block">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="text-xs font-black uppercase text-aqua">Prototipo academico</p>
+              <h2 id="topTitle" class="text-lg font-black text-ink">Dashboard</h2>
+            </div>
+            <div class="flex items-center gap-2">
+              <select id="roleSwitcher" class="form-control w-56"></select>
+              <button class="btn btn-ghost" type="button" data-action="restore-demo"><i data-lucide="rotate-ccw" class="h-5 w-5"></i>Demo</button>
+            </div>
+          </div>
+        </header>
+        <main id="content" class="mx-auto max-w-[1500px] p-4 sm:p-6 lg:p-8"></main>
+      </section>
+    </div>
+  </div>
+
+  <div id="modalRoot" class="fixed inset-0 z-[80] hidden items-center justify-center bg-ink/70 p-4"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/storage.js"></script>
+  <script src="assets/js/validations.js"></script>
+  <script src="assets/js/reservations.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
