@@ -16,6 +16,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   border-radius: .5rem;
   background: #fff;
   box-shadow: 0 18px 46px rgba(15, 23, 42, .10);
+  animation: panel-in .28s ease both;
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .glass-tile {
@@ -144,11 +150,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   font-weight: 950;
   white-space: nowrap;
 }
-.badge-activo, .badge-activa, .badge-disponible, .badge-pagado, .badge-confirmada, .badge-completada, .badge-finalizado, .badge-aprobada, .badge-ordenada, .badge-recibida, .badge-cumplida, .badge-bonificacionaprobada { background: #dcfce7; color: #166534; }
-.badge-pendiente, .badge-proximaavencer, .badge-pocoscupos, .badge-reservada, .badge-programado, .badge-enproceso, .badge-solicitada, .badge-enrevision { background: #fef3c7; color: #92400e; }
-.badge-suspendido, .badge-suspendida, .badge-cancelada, .badge-cancelado, .badge-vencida, .badge-rechazada, .badge-fueradeservicio, .badge-enmantenimiento, .badge-bloqueado, .badge-noasistio, .badge-rechazado, .badge-completa, .badge-cerrada, .badge-cerradatemporalmente { background: #fee2e2; color: #991b1b; }
-.badge-inactivo, .badge-cerrado, .badge-borrador, .badge-vacaciones, .badge-bonificacionnoalcanzada, .badge-nocumplida { background: #e2e8f0; color: #334155; }
-.badge-encurso, .badge-enuso, .badge-capacidadlimitada { background: #dbeafe; color: #1d4ed8; }
+.badge-activo, .badge-activa, .badge-disponible, .badge-pagado, .badge-confirmada, .badge-completada, .badge-finalizado, .badge-aprobada, .badge-ordenada, .badge-recibida, .badge-cumplida, .badge-bonificacionaprobada, .badge-operativo, .badge-bonocompleto, .badge-enviada, .badge-emitida { background: #dcfce7; color: #166534; }
+.badge-pendiente, .badge-pendientedeemision, .badge-pendienteeevaluacion, .badge-pendientedeevaluacion, .badge-pendientededocumentacion, .badge-proximaavencer, .badge-pocoscupos, .badge-programado, .badge-enproceso, .badge-solicitada, .badge-enrevision, .badge-cargado, .badge-enrevision, .badge-bonoparcial { background: #fef3c7; color: #92400e; }
+.badge-suspendido, .badge-suspendida, .badge-cancelada, .badge-cancelado, .badge-vencida, .badge-rechazada, .badge-fueradeservicio, .badge-enmantenimiento, .badge-bloqueado, .badge-noasistio, .badge-rechazado, .badge-completa, .badge-cerrada, .badge-cerradatemporalmente, .badge-danado, .badge-errordeemision, .badge-noalcanzado { background: #fee2e2; color: #991b1b; }
+.badge-inactivo, .badge-cerrado, .badge-borrador, .badge-vacaciones, .badge-bonificacionnoalcanzada, .badge-nocumplida, .badge-retirado, .badge-anulada { background: #e2e8f0; color: #334155; }
+.badge-encurso, .badge-capacidadlimitada, .badge-propuestapendientedevalidacion { background: #dbeafe; color: #1d4ed8; }
 
 .chart-box { position: relative; height: 270px; margin-top: 1rem; }
 .table-wrap { overflow-x: auto; border-top: 1px solid #e2e8f0; }
@@ -247,6 +253,24 @@ tr:last-child td { border-bottom: 0; }
   transition: transform .18s ease, box-shadow .18s ease;
 }
 .area-card:hover { transform: translateY(-2px); box-shadow: 0 22px 54px rgba(15,23,42,.14); }
+
+.store-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.product-card {
+  overflow: hidden;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.product-card:hover { transform: translateY(-3px); box-shadow: 0 22px 54px rgba(15,23,42,.16); }
+.product-card img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #e2e8f0;
+}
 
 @media (max-width: 640px) {
   .btn { width: 100%; }

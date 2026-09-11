@@ -19,20 +19,26 @@ Cuentas:
 
 - Login simulado por rol.
 - Dashboard con indicadores y graficas.
-- Gestion administrativa de clientes, empleados, membresias, inventario, horarios, reservas, mantenimiento, ordenes de compra, pagos, metricas del personal y reportes.
+- Gestion administrativa de clientes, empleados, membresias, accesos, areas/equipos, horarios, reservas, cafeteria, suplementos, ventas, compras, mantenimiento, metricas, reportes y servicios.
 - Modulo de sucursales con capacidad, contacto, encargado, estado e indicadores relacionados.
-- Inventario con pestanas separadas para areas y maquinas.
+- Inventario con pestanas separadas para areas y equipos, sin ocupacion individual de maquinas.
 - Mantenimiento separado del inventario con filtros, historial y acciones por estado.
 - Dashboard filtrable por sucursal.
 - Reportes por categorias con imprimir, CSV y descarga simulada.
 - Clientes con busqueda, filtros por sucursal, membresia y estado, detalle de pagos, membresias, reservas, asistencias y observaciones.
 - Empleados con busqueda, filtros por sucursal, puesto y estado, acciones de activacion/desactivacion y datos laborales.
-- Metricas individuales para coaches y recepcionistas, con dos metas obligatorias, progreso y calculo de bonificacion.
-- Ordenes de compra de maquinas, repuestos, accesorios, oficina e insumos, con flujo de aprobacion y recepcion.
+- Metricas individuales para coaches y recepcionistas, con dos bonos configurables e independientes.
+- Ordenes de compra de equipos, repuestos, accesorios, oficina e insumos, con certificacion obligatoria para equipos.
+- Facturacion electronica simulada con estados, envio por correo, descarga y reintento.
+- Cafeteria y suplementos con productos, bebidas, combos, partners, stock y ventas.
+- Vista de cliente Menu / Tienda con carrito, descuentos por membresia y factura.
+- Servicios tercerizados con nutricionista como partner y agenda marcada como propuesta pendiente de validacion.
+- Panel del coach limitado a sus clases, participantes, asistencia, historial y metricas.
+- Reportes financieros restringidos por rol y reporte diario por sucursal.
 - Sucursales con amenidades administradas como areas operativas.
 - Ordenes de compra con visto bueno del administrador de sucursal y gerente general antes de aprobar.
 - Recepcion de equipo con cantidades recibidas, entrega completa/parcial e incorporacion opcional al inventario antes de registrar maquina.
-- Reglas de negocio para reservas, cupos, maquinas, areas, membresias, traslapes y cancelaciones.
+- Reglas de negocio para reservas, cupos, equipos, areas, membresias, facturas, compras certificadas y roles.
 - Datos persistentes en LocalStorage.
 - Boton para restaurar datos demo.
 - Modales, toasts, filtros, badges de estados y tablas responsivas.

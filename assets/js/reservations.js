@@ -15,14 +15,12 @@
       id: uid("r"),
       clientId: payload.clientId,
       scheduleId: payload.scheduleId,
-      machineId: payload.machineId || "",
+      attendance: "Pendiente",
       status: payload.status || "Pendiente",
       createdAt: stamp(),
       history: [{ status: payload.status || "Pendiente", at: stamp() }]
     };
     data.reservations.unshift(item);
-    const machine = payload.machineId ? window.GymRules.byId(data, "machines", payload.machineId) : null;
-    if (machine && machine.status === "Disponible") machine.status = "Reservada";
     audit(data, user, "Reservas", "Crear reserva", item.id);
     return { ok: true, item };
   }
@@ -35,10 +33,8 @@
     const before = reservation.status;
     reservation.status = next;
     reservation.history.push({ status: next, at: stamp() });
-    if (["Cancelada", "Completada", "No asistio", "Rechazada"].includes(next) && reservation.machineId) {
-      const machine = window.GymRules.byId(data, "machines", reservation.machineId);
-      if (machine && machine.status === "Reservada") machine.status = "Disponible";
-    }
+    if (next === "Completada") reservation.attendance = "Presente";
+    if (next === "No asistio") reservation.attendance = "Ausente";
     audit(data, user, "Reservas", `Estado ${before} -> ${next}`, reservation.id);
     return { ok: true, item: reservation };
   }

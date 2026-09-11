@@ -2,7 +2,7 @@
   "use strict";
 
   const activeReservationStates = ["Pendiente", "Confirmada", "En curso"];
-  const unavailableMachineStates = ["En mantenimiento", "Fuera de servicio"];
+  const unavailableMachineStates = ["En mantenimiento", "Danado", "Fuera de servicio", "Retirado", "Pendiente de documentacion"];
   const unavailableAreaStates = ["Cerrada", "En mantenimiento"];
   const inactiveBranchStates = ["Inactiva", "En mantenimiento", "Cerrada temporalmente"];
   const reservationFlow = {
@@ -15,11 +15,12 @@
     "Rechazada": []
   };
   const machineFlow = {
-    "Disponible": ["Reservada", "En uso", "En mantenimiento", "Fuera de servicio"],
-    "Reservada": ["En uso", "Disponible", "En mantenimiento"],
-    "En uso": ["Disponible", "En mantenimiento"],
-    "En mantenimiento": ["Disponible"],
-    "Fuera de servicio": ["En mantenimiento", "Disponible"]
+    "Operativo": ["En mantenimiento", "Danado", "Fuera de servicio", "Retirado"],
+    "En mantenimiento": ["Operativo", "Fuera de servicio"],
+    "Danado": ["En mantenimiento", "Fuera de servicio"],
+    "Fuera de servicio": ["En mantenimiento", "Retirado"],
+    "Pendiente de documentacion": ["Operativo", "Fuera de servicio"],
+    "Retirado": []
   };
   const membershipFlow = {
     "Pendiente": ["Activa", "Cancelada"],
@@ -64,7 +65,7 @@
   }
 
   function machineOperationalCapacity(data, areaId) {
-    const machines = data.machines.filter((machine) => machine.areaId === areaId && !unavailableMachineStates.includes(machine.status));
+    const machines = data.machines.filter((machine) => machine.areaId === areaId && machine.status === "Operativo");
     return machines.reduce((sum, machine) => sum + Number(machine.simultaneousCapacity || 0), 0);
   }
 
@@ -72,29 +73,27 @@
     return data.clients.filter((client) => client.currentAreaId === areaId && client.status === "Activo").length;
   }
 
-  function confirmedReservations(data, scheduleId, machineId = "") {
+  function confirmedReservations(data, scheduleId) {
     return data.reservations.filter((reservation) => {
       if (reservation.scheduleId !== scheduleId || !activeReservationStates.includes(reservation.status)) return false;
-      return !machineId || reservation.machineId === machineId;
+      return true;
     }).length;
   }
 
-  function availability(data, scheduleId, machineId = "") {
+  function availability(data, scheduleId) {
     const schedule = byId(data, "schedules", scheduleId);
     if (!schedule) return { total: 0, reserved: 0, inUse: 0, available: 0, percent: 100, state: "Cerrado", reason: "Horario no encontrado" };
     const area = byId(data, "areas", schedule.areaId);
     const branch = byId(data, "branches", schedule.branchId);
-    const machine = machineId ? byId(data, "machines", machineId) : null;
 
     if (!area || !branch) return { total: 0, reserved: 0, inUse: 0, available: 0, percent: 100, state: "Cerrado", reason: "Area o sucursal invalida" };
     if (inactiveBranchStates.includes(branch.status)) return { total: 0, reserved: 0, inUse: 0, available: 0, percent: 100, state: "Cerrado", reason: "Sucursal no activa" };
     if (schedule.status === "Cerrado" || unavailableAreaStates.includes(area.status)) return { total: 0, reserved: 0, inUse: 0, available: 0, percent: 100, state: "Cerrado", reason: "Area cerrada o en mantenimiento" };
-    if (toMinutes(schedule.start) < toMinutes(branch.opens) || toMinutes(schedule.end) > toMinutes(branch.closes)) return { total: 0, reserved: 0, inUse: 0, available: 0, percent: 100, state: "Cerrado", reason: "Fuera del horario de sucursal" };
-    if (machine && unavailableMachineStates.includes(machine.status)) return { total: 0, reserved: 0, inUse: 0, available: 0, percent: 100, state: "Cerrado", reason: "Maquina no disponible" };
+    if (area.name === "Boxeo" && !branch.hasBoxingRing) return { total: 0, reserved: 0, inUse: 0, available: 0, percent: 100, state: "Cerrado", reason: "La sucursal no tiene ring de boxeo" };
 
-    const operational = machine ? Number(machine.simultaneousCapacity) : machineOperationalCapacity(data, area.id);
+    const operational = machineOperationalCapacity(data, area.id);
     const total = Math.min(Number(area.capacity), Number(schedule.capacity), operational || Number(area.capacity));
-    const reserved = confirmedReservations(data, scheduleId, machineId);
+    const reserved = confirmedReservations(data, scheduleId);
     const inUse = currentPeople(data, area.id);
     const available = Math.max(0, total - reserved - inUse);
     const percent = total ? Math.round(((reserved + inUse) / total) * 100) : 100;
@@ -108,7 +107,6 @@
     if (!client || !schedule) return { ok: false, reason: "Cliente u horario no encontrado" };
     const area = byId(data, "areas", schedule.areaId);
     const branch = byId(data, "branches", schedule.branchId);
-    const machine = payload.machineId ? byId(data, "machines", payload.machineId) : null;
     const membership = membershipFor(data, client.id);
     const plan = planFor(data, membership);
 
@@ -117,10 +115,9 @@
     if (schedule.date < membership.startDate || schedule.date > membership.endDate) return { ok: false, reason: "La membresia no esta vigente para la fecha seleccionada" };
     if (!plan.areas.includes(schedule.areaId)) return { ok: false, reason: "La membresia no permite reservar esta area" };
     if (inactiveBranchStates.includes(branch?.status)) return { ok: false, reason: "La sucursal no acepta nuevas reservas" };
-    if (!branch || toMinutes(schedule.start) < toMinutes(branch.opens) || toMinutes(schedule.end) > toMinutes(branch.closes)) return { ok: false, reason: "Horario fuera del rango de la sucursal" };
     if (!area || unavailableAreaStates.includes(area.status) || schedule.status === "Cerrado") return { ok: false, reason: "El area esta cerrada o en mantenimiento" };
-    if (machine && machine.areaId !== schedule.areaId) return { ok: false, reason: "La maquina seleccionada no pertenece al area del horario" };
-    if (machine && unavailableMachineStates.includes(machine.status)) return { ok: false, reason: "La maquina esta en mantenimiento o fuera de servicio" };
+    if (area.name === "Boxeo" && !branch.hasBoxingRing) return { ok: false, reason: "Boxeo solo se ofrece en sucursales con ring" };
+    if (area.name === "Boxeo" && plan.id === "p-basica") return { ok: false, reason: "La membresia Basica no incluye boxeo" };
 
     const sameSlot = data.reservations.some((reservation) => reservation.clientId === client.id && reservation.scheduleId === schedule.id && activeReservationStates.includes(reservation.status));
     if (sameSlot) return { ok: false, reason: "Ya existe una reserva para ese cliente, fecha y horario" };
@@ -138,7 +135,7 @@
     const activeCount = data.reservations.filter((reservation) => reservation.clientId === client.id && activeReservationStates.includes(reservation.status)).length;
     if (activeCount >= Number(plan.reservationLimit)) return { ok: false, reason: "El cliente supero el limite de reservas de su plan" };
 
-    const spaces = availability(data, schedule.id, payload.machineId);
+    const spaces = availability(data, schedule.id);
     if (spaces.available <= 0) return { ok: false, reason: spaces.reason || "No hay cupos disponibles" };
 
     const selectedTime = new Date(`${schedule.date}T${schedule.start}:00`);

@@ -9,9 +9,9 @@
 
   const roles = {
     admin: { label: "Administrador", permissions: ["all"] },
-    reception: { label: "Recepcionista", permissions: ["dashboard", "clients", "memberships", "schedules", "reservations", "payments", "staffMetrics", "reports"] },
-    trainer: { label: "Entrenador", permissions: ["dashboard", "schedules", "reservations", "staffMetrics", "reports"] },
-    client: { label: "Cliente", permissions: ["dashboard", "inventory", "schedules", "reservations", "memberships"] }
+    reception: { label: "Recepcionista", permissions: ["dashboard", "clients", "memberships", "schedules", "reservations", "payments", "store", "services"] },
+    trainer: { label: "Entrenador", permissions: ["dashboard", "schedules", "coachPanel", "staffMetrics"] },
+    client: { label: "Cliente", permissions: ["dashboard", "memberships", "schedules", "reservations", "coachPanel", "poolBoxing", "store", "services", "payments"] }
   };
 
   const nav = [
@@ -20,14 +20,20 @@
     ["clients", "users-round", "Clientes", "clients"],
     ["employees", "id-card", "Empleados", "employees"],
     ["memberships", "badge-dollar-sign", "Membresias", "memberships"],
-    ["inventory", "warehouse", "Areas y maquinas", "inventory"],
-    ["schedules", "calendar-days", "Horarios", "schedules"],
+    ["access", "scan-line", "Accesos", "access"],
+    ["inventory", "warehouse", "Areas y equipos", "inventory"],
+    ["schedules", "calendar-days", "Horarios y clases", "schedules"],
     ["reservations", "clipboard-check", "Reservas", "reservations"],
-    ["maintenance", "wrench", "Mantenimiento", "maintenance"],
-    ["purchaseOrders", "shopping-cart", "Ordenes de compra", "purchaseOrders"],
+    ["coachPanel", "clipboard-list", "Panel del coach", "coachPanel"],
+    ["poolBoxing", "waves", "Piscina y boxeo", "poolBoxing"],
+    ["store", "coffee", "Cafeteria y suplementos", "store"],
     ["payments", "credit-card", "Pagos", "payments"],
+    ["purchaseOrders", "shopping-cart", "Compras y proveedores", "purchaseOrders"],
+    ["maintenance", "wrench", "Mantenimiento", "maintenance"],
     ["staffMetrics", "target", "Metricas del personal", "staffMetrics"],
-    ["reports", "chart-no-axes-combined", "Reportes", "reports"]
+    ["reports", "chart-no-axes-combined", "Reportes", "reports"],
+    ["services", "heart-pulse", "Servicios", "services"],
+    ["settings", "settings", "Configuracion", "settings"]
   ];
 
   const app = { data: null, user: null, view: "dashboard", filters: { inventoryTab: "areas", reportTab: "Clientes" }, charts: [] };
@@ -45,7 +51,7 @@
     if (!data.areas.some((area) => area.name.toLowerCase() === "natacion")) {
       data.areas.push({ id: "a-natacion", name: "Natacion", description: "Piscina para entrenamiento, tecnica y rehabilitacion.", branchId: "b1", capacity: 18, schedule: "04:00-22:00", status: "Disponible" });
     }
-    data.plans.filter((plan) => ["p2", "p3", "p4"].includes(plan.id)).forEach((plan) => {
+    data.plans.filter((plan) => false).forEach((plan) => {
       plan.areas ||= [];
       if (!plan.areas.includes("a-natacion")) plan.areas.push("a-natacion");
     });
@@ -154,6 +160,24 @@
     return admins.sort((a, b) => (a.id === branchAdmin?.id ? -1 : b.id === branchAdmin?.id ? 1 : a.name.localeCompare(b.name))).map((employee) => ({ value: employee.id, label: `${employee.name} / ${branchName(employee.branchId)}` }));
   }
   function money(value) { return `Q${Number(value || 0).toLocaleString("es-GT")}`; }
+  function createInvoice(payment, client, status = "Pendiente de emision") {
+    const next = String(1000 + (app.data?.payments?.length || 1)).padStart(4, "0");
+    return { number: payment.receipt?.replace(/\D/g, "") || next, series: payment.branchId === "b2" ? "REN-B" : "REN-A", date: payment.date || today, status, email: client?.email || "cliente@gym.test", sent: false, attempts: 0 };
+  }
+  function productName(id) { return byId("products", id)?.name || "Producto"; }
+  function partnerName(id) { return id ? byId("partners", id)?.name || "Partner" : "Renovatio Gym"; }
+  function discountForClient(clientId) {
+    const membership = window.GymRules.membershipFor(app.data, clientId);
+    const plan = window.GymRules.planFor(app.data, membership);
+    return plan?.id === "p-haute" ? 10 : 0;
+  }
+  function metricBonus(metric) {
+    const percent = metricPercent(metric);
+    if (metric.status === "Pendiente de evaluacion") return 0;
+    if (percent >= 100) return Number(metric.bonusAmount || 0);
+    if (percent >= Number(metric.threshold || 0)) return Math.round(Number(metric.bonusAmount || 0) * 0.5);
+    return 0;
+  }
   function orderSubtotal(order) { return (order.items || []).reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0); }
   function orderTax(order) { return Math.round(orderSubtotal(order) * Number(order.taxRate ?? 0.12)); }
   function orderTotal(order) { return orderSubtotal(order) + orderTax(order); }
@@ -162,9 +186,14 @@
   function metricMet(item) { return Number(item.result || 0) >= Number(item.goal || 0); }
   function bonusState(employee) {
     const record = metricRecord(employee.id);
-    const metCount = record ? record.metrics.filter(metricMet).length : 0;
-    const approved = metCount === 2;
-    return { record, metCount, approved, tone: approved ? "green" : metCount === 1 ? "yellow" : "red", bonus: approved ? Number(employee.bonus || 0) : 0, total: Number(employee.baseSalary || 0) + (approved ? Number(employee.bonus || 0) : 0) };
+    const metrics = record?.metrics || [];
+    const bonus = metrics.reduce((sum, metric) => sum + metricBonus(metric), 0);
+    const possible = metrics.reduce((sum, metric) => sum + Number(metric.bonusAmount || 0), 0);
+    const metCount = metrics.filter((metric) => metricBonus(metric) >= Number(metric.bonusAmount || 0)).length;
+    const pending = metrics.some((metric) => metric.status === "Pendiente de evaluacion");
+    const tone = pending ? "yellow" : bonus >= possible && possible ? "green" : bonus > 0 ? "yellow" : "red";
+    const state = pending ? "Pendiente de evaluacion" : bonus >= possible && possible ? "Bono completo" : bonus > 0 ? "Bono parcial" : "No alcanzado";
+    return { record, metCount, approved: bonus > 0, tone, bonus, possible, total: Number(employee.baseSalary || 0) + bonus, state };
   }
 
   function branchFilter(id) {
@@ -177,8 +206,15 @@
   }
 
   function renderNav() {
-    const items = nav.filter(([, , , permission]) => can(permission));
-    const html = items.map(([id, ico, label]) => `<button class="btn-sidebar ${app.view === id ? "active" : ""}" data-section="${id}">${icon(ico)}<span>${label}</span></button>`).join("");
+    const clientLabels = { dashboard: "Inicio", memberships: "Mi membresia", schedules: "Clases", reservations: "Mis reservas", coachPanel: "Coaching", store: "Menu / Tienda", payments: "Mis pagos y facturas" };
+    const adminOrder = ["dashboard", "branches", "clients", "employees", "memberships", "access", "inventory", "schedules", "reservations", "store", "payments", "purchaseOrders", "maintenance", "staffMetrics", "reports", "settings"];
+    let items = nav.filter(([id, , , permission]) => {
+      if (app.user.role === "admin") return adminOrder.includes(id);
+      if (app.user.role !== "client" && id === "poolBoxing") return false;
+      return can(permission);
+    });
+    if (app.user.role === "admin") items = adminOrder.map((id) => items.find((item) => item[0] === id)).filter(Boolean);
+    const html = items.map(([id, ico, label]) => `<button class="btn-sidebar ${app.view === id ? "active" : ""}" data-section="${id}">${icon(ico)}<span>${esc(app.user.role === "client" ? clientLabels[id] || label : label)}</span></button>`).join("");
     $("#desktopNav").innerHTML = html;
     $("#mobileNav").innerHTML = html;
     $("#activeUserLabel").textContent = `${app.user.name} / ${roles[app.user.role].label}`;
@@ -188,7 +224,7 @@
   function render() {
     if (!can(nav.find((item) => item[0] === app.view)?.[3] || "dashboard")) app.view = "dashboard";
     renderNav();
-    const views = { dashboard, branches, clients, employees, memberships, inventory, schedules, reservations, maintenance, purchaseOrders, payments, staffMetrics, reports };
+    const views = { dashboard, branches, clients, employees, memberships, access, inventory, schedules, reservations, coachPanel, poolBoxing, store, maintenance, purchaseOrders, payments, staffMetrics, reports, services, settings };
     $("#content").innerHTML = (views[app.view] || dashboard)();
     window.lucide?.createIcons();
     setTimeout(renderCharts, 0);
@@ -245,7 +281,7 @@
         ${metric("Ingresos del mes", money(monthIncome), "septiembre 2026", "landmark", "blue")}
         ${metric("Reservas del dia", todayReservations, "activas o pendientes", "calendar-check", "orange")}
         ${metric("Ocupacion actual", `${occupation}%`, "promedio operativo", "activity", "orange")}
-        ${metric("Maquinas disponibles", scope.machines.filter((m) => m.status === "Disponible").length, "inventario operativo", "dumbbell", "green")}
+        ${metric("Equipos operativos", scope.machines.filter((m) => m.status === "Operativo").length, "capacidad del area", "dumbbell", "green")}
         ${metric("En mantenimiento", scope.machines.filter((m) => m.status === "En mantenimiento").length, "requieren seguimiento", "wrench", "red")}
         ${metric("Membresias activas", `${activeMemberships}`, `${expiring} por vencer`, "badge-check", "yellow")}
       </section>
@@ -356,14 +392,14 @@
   function staffMetricDetail(employee, state) {
     const metrics = state.record?.metrics || [];
     const bonusAction = isAdmin() ? `<div class="mt-4">${button(`${icon("pencil")} Modificar bonificacion`, "open-bonus", "ghost", `data-id="${employee.id}"`)}</div>` : "";
-    return `<section class="mt-5 grid gap-5 xl:grid-cols-[1.25fr_.75fr]"><article class="grid gap-4 md:grid-cols-2">${metrics.map(metricCard).join("")}</article><article class="panel bonus-card ${state.tone} p-5"><div class="section-head"><div><h2>Resumen de bonificacion</h2><p>${esc(employee.name)} / ${esc(employee.position)}</p></div>${badge(state.approved ? "Bonificacion aprobada" : "Bonificacion no alcanzada")}</div><dl class="detail-grid mt-4"><div><dt>Sueldo base</dt><dd>${money(employee.baseSalary)}</dd></div><div><dt>Bonificacion</dt><dd>${money(state.bonus)}</dd></div><div><dt>Total estimado</dt><dd>${money(state.total)}</dd></div><div><dt>Resultado</dt><dd>${state.approved ? "Bonificacion aprobada" : "Bonificacion no alcanzada"}</dd></div></dl><p class="mt-4 text-sm font-bold text-slate-700">La bonificacion solo se aprueba cuando cumple las dos metricas obligatorias.</p>${bonusAction}</article></section>
-    <section class="panel mt-5 p-5"><div class="section-head"><div><h2>Detalle operativo</h2><p>Datos individuales del periodo ${esc(state.record?.period || "2026-09")}.</p></div></div><dl class="detail-grid mt-4"><div><dt>Sucursal</dt><dd>${branchName(employee.branchId)}</dd></div><div><dt>Clases asignadas</dt><dd>${esc(state.record?.assignedClasses || "No aplica")}</dd></div><div><dt>Clientes atendidos</dt><dd>${state.record?.clientsServed ?? 0}</dd></div><div><dt>Ausencias</dt><dd>${state.record?.absences ?? 0}</dd></div><div><dt>Calificacion promedio</dt><dd>${state.record?.rating ?? "-"}</dd></div><div><dt>Horario</dt><dd>${esc(employee.workSchedule)}</dd></div><div><dt>Sueldo base</dt><dd>${money(employee.baseSalary)}</dd></div><div><dt>Bonificacion posible</dt><dd>${money(employee.bonus)}</dd></div></dl></section>`;
+    return `<section class="mt-5 grid gap-5 xl:grid-cols-[1.25fr_.75fr]"><article class="grid gap-4 md:grid-cols-2">${metrics.map(metricCard).join("")}</article><article class="panel bonus-card ${state.tone} p-5"><div class="section-head"><div><h2>Resumen de bonificacion</h2><p>${esc(employee.name)} / ${esc(employee.position)}</p></div>${badge(state.state)}</div><dl class="detail-grid mt-4"><div><dt>Sueldo base</dt><dd>${money(employee.baseSalary)}</dd></div>${metrics.map((metric) => `<div><dt>${esc(metric.label)}</dt><dd>${money(metricBonus(metric))}<small>Configurado ${money(metric.bonusAmount)}</small></dd></div>`).join("")}<div><dt>Total estimado</dt><dd>${money(state.total)}</dd></div><div><dt>Resultado</dt><dd>${esc(state.state)}</dd></div></dl><p class="mt-4 text-sm font-bold text-slate-700">Cada bono se calcula segun su propia regla configurable.</p>${bonusAction}</article></section>
+    <section class="panel mt-5 p-5"><div class="section-head"><div><h2>Detalle operativo</h2><p>Solo sesiones iniciadas y finalizadas como Completada cuentan para metricas de coach.</p></div></div><dl class="detail-grid mt-4"><div><dt>Sucursal</dt><dd>${branchName(employee.branchId)}</dd></div><div><dt>Clases asignadas</dt><dd>${esc(state.record?.assignedClasses || "No aplica")}</dd></div><div><dt>Clientes atendidos</dt><dd>${state.record?.clientsServed ?? 0}</dd></div><div><dt>Ausencias</dt><dd>${state.record?.absences ?? 0}</dd></div><div><dt>Calificacion promedio</dt><dd>${state.record?.rating ?? "-"}</dd></div><div><dt>Horario</dt><dd>${esc(employee.workSchedule)}</dd></div></dl></section>`;
   }
 
   function metricCard(item) {
     const percent = metricPercent(item);
     const met = metricMet(item);
-    return `<article class="panel p-5"><div class="section-head"><div><h2>${esc(item.label)}</h2><p>${esc(item.unit)}</p></div>${badge(met ? "Cumplida" : "No cumplida")}</div><dl class="detail-grid mt-4"><div><dt>Meta establecida</dt><dd>${item.goal}</dd></div><div><dt>Resultado alcanzado</dt><dd>${item.result}</dd></div><div><dt>Cumplimiento</dt><dd>${percent}%</dd></div><div><dt>Estado</dt><dd>${met ? "Cumplida" : "No cumplida"}</dd></div></dl><div class="mt-4 h-3 rounded-full bg-slate-200"><span class="block h-3 rounded-full ${met ? "bg-emerald-500" : "bg-amber-500"}" style="width:${Math.min(percent, 130)}%"></span></div></article>`;
+    return `<article class="panel p-5"><div class="section-head"><div><h2>${esc(item.label)}</h2><p>${esc(item.unit)}</p></div>${badge(item.status || (met ? "Bono completo" : "No alcanzado"))}</div><dl class="detail-grid mt-4"><div><dt>Meta</dt><dd>${item.goal}</dd></div><div><dt>Resultado</dt><dd>${item.result}</dd></div><div><dt>Cumplimiento</dt><dd>${percent}%</dd></div><div><dt>Umbral</dt><dd>${item.threshold || 0}%</dd></div><div><dt>Monto configurado</dt><dd>${money(item.bonusAmount)}</dd></div><div><dt>Bono calculado</dt><dd>${money(metricBonus(item))}</dd></div></dl><div class="mt-4 h-3 rounded-full bg-slate-200"><span class="block h-3 rounded-full ${met ? "bg-emerald-500" : "bg-amber-500"}" style="width:${Math.min(percent, 100)}%"></span></div></article>`;
   }
 
   function purchaseOrders() {
@@ -401,10 +437,10 @@
   function memberships() {
     const clientOnly = app.user.role === "client";
     const membershipList = clientOnly ? app.data.memberships.filter((membership) => membership.clientId === app.user.clientId) : app.data.memberships;
-    const actions = isAdmin() ? button(`${icon("plus")} Registrar pago`, "open-payment", "primary") : "";
+    const actions = isAdmin() ? `${button(`${icon("plus")} Nueva membresia`, "open-plan", "primary")}${button(`${icon("plus")} Registrar pago`, "open-payment", "secondary")}` : "";
     return page("Membresias y planes", "Planes, vigencias, permisos de areas y estados de membresia.", actions) +
       `<section class="grid gap-5 xl:grid-cols-[.9fr_1.4fr]">
-        <article class="panel p-5"><div class="section-head"><div><h2>Planes disponibles</h2><p>Areas y limites por plan.</p></div></div><div class="mt-4 space-y-3">${app.data.plans.map((plan) => `<div class="plan-card"><div><b>${esc(plan.name)}</b><small>Q${plan.price} / ${plan.durationDays} dias / ${plan.reservationLimit} reservas</small></div>${badge(plan.status)}<p>${plan.areas.map(areaName).join(", ")}</p></div>`).join("")}</div></article>
+        <article class="panel p-5"><div class="section-head"><div><h2>Planes disponibles</h2><p>Beneficios, limites y pendientes de confirmacion.</p></div></div><div class="mt-4 space-y-3">${app.data.plans.map((plan) => { const related = app.data.memberships.filter((m) => m.planId === plan.id).length; const benefits = (plan.benefits || []).map((item) => `${item.name}: ${item.limit}${item.unit || ""} / ${item.period}`).join(", "); const pending = (plan.pendingBenefits || []).length ? `<small>Pendientes de confirmacion: ${esc(plan.pendingBenefits.join(", "))}</small>` : ""; const planActions = isAdmin() ? `<div class="row-actions">${button(icon("pencil"), "open-plan", "icon-only", `data-id="${plan.id}" title="Editar"`)}${button(plan.status === "Activa" ? "Desactivar" : "Activar", "plan-status", plan.status === "Activa" ? "warning" : "success", `data-id="${plan.id}"`)}${button("Eliminar", "delete-plan", "danger", `data-id="${plan.id}"`)}</div>` : ""; return `<div class="plan-card"><div><b>${esc(plan.name)}</b><small>${money(plan.price)} / ${plan.durationDays} dias / ${plan.reservationLimit} reservas</small>${pending}</div>${badge(plan.status)}<p>${esc(benefits)}</p><p>Areas: ${plan.areas.map(areaName).join(", ")}. Clientes relacionados: ${related}</p>${planActions}</div>`; }).join("")}</div></article>
         <article class="panel overflow-hidden"><div class="section-head p-5"><div><h2>${clientOnly ? "Mi membresia" : "Membresias asignadas"}</h2><p>${clientOnly ? "Vigencia y estado de tu plan actual." : "Estados y fechas de vencimiento."}</p></div></div><div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Plan</th><th>Vigencia</th><th>Estado</th>${isAdmin() ? "<th>Acciones</th>" : ""}</tr></thead><tbody>${membershipList.map((membership) => `<tr><td>${clientName(membership.clientId)}</td><td>${planName(membership.planId)}</td><td>${membership.startDate} al ${membership.endDate}</td><td>${badge(membership.status)}</td>${isAdmin() ? `<td><div class="row-actions">${["Pendiente", "Suspendida"].includes(membership.status) ? button("Activar", "membership-status", "success", `data-id="${membership.id}" data-next="Activa"`) : ""}${["Activa", "Proxima a vencer"].includes(membership.status) ? button("Suspender", "membership-status", "warning", `data-id="${membership.id}" data-next="Suspendida"`) : ""}${!["Cancelada", "Vencida"].includes(membership.status) ? button("Cancelar", "membership-status", "danger", `data-id="${membership.id}" data-next="Cancelada"`) : ""}</div></td>` : ""}</tr>`).join("") || `<tr><td colspan="${isAdmin() ? 5 : 4}" class="empty">Sin membresia registrada.</td></tr>`}</tbody></table></div></article>
       </section>`;
   }
@@ -419,7 +455,7 @@
     const machines = filterMachines(branch, term, state);
     const actions = isAdmin() ? `${button(`${icon("plus")} Nueva area`, "open-area", "primary")}${button(`${icon("plus")} Nueva maquina`, "open-machine", "secondary")}` : "";
     return page("Areas y maquinas", "Inventario separado de mantenimiento, con filtros y formularios propios.", actions) +
-      `<section class="panel p-5"><div class="grid gap-3 lg:grid-cols-[220px_1fr_180px_220px]"><select id="inventoryBranch" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((b) => ({ value: b.id, label: b.name })), branch)}</select><input id="inventorySearch" class="form-control" placeholder="Buscar area, maquina, codigo, marca..." value="${esc(app.filters.inventorySearch || "")}"><select id="inventoryType" class="form-control">${options([{ value: "all", label: "Todas" }, { value: "areas", label: "Areas" }, { value: "machines", label: "Maquinas" }], type)}</select><select id="inventoryState" class="form-control"><option value="">Todos los estados</option>${options(["Disponible", "Capacidad limitada", "Completa", "Cerrada", "En mantenimiento", "Reservada", "En uso", "Fuera de servicio"], state)}</select></div><div class="tabs mt-4"><button class="${tab === "areas" ? "active" : ""}" data-action="inventory-tab" data-tab="areas">Areas</button><button class="${tab === "machines" ? "active" : ""}" data-action="inventory-tab" data-tab="machines">Maquinas</button></div></section>
+      `<section class="panel p-5"><div class="grid gap-3 lg:grid-cols-[220px_1fr_180px_220px]"><select id="inventoryBranch" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((b) => ({ value: b.id, label: b.name })), branch)}</select><input id="inventorySearch" class="form-control" placeholder="Buscar area, equipo, codigo, marca..." value="${esc(app.filters.inventorySearch || "")}"><select id="inventoryType" class="form-control">${options([{ value: "all", label: "Todas" }, { value: "areas", label: "Areas" }, { value: "machines", label: "Equipos" }], type)}</select><select id="inventoryState" class="form-control"><option value="">Todos los estados</option>${options(["Disponible", "Capacidad limitada", "Completa", "Cerrada", "En mantenimiento", "Operativo", "Danado", "Fuera de servicio", "Retirado", "Pendiente de documentacion"], state)}</select></div><div class="tabs mt-4"><button class="${tab === "areas" ? "active" : ""}" data-action="inventory-tab" data-tab="areas">Areas</button><button class="${tab === "machines" ? "active" : ""}" data-action="inventory-tab" data-tab="machines">Equipos</button></div></section>
       ${type !== "machines" && tab === "areas" ? areaInventory(areas) : ""}
       ${type !== "areas" && tab === "machines" ? machineInventory(machines) : ""}`;
   }
@@ -482,9 +518,9 @@
   }
 
   function reservationTable(list) {
-    return `<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Horario</th><th>Sucursal</th><th>Area / Maquina</th><th>Estado</th><th>Historial</th><th>Acciones</th></tr></thead><tbody>${list.map((reservation) => {
+    return `<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Horario</th><th>Sucursal</th><th>Area</th><th>Estado</th><th>Historial</th><th>Acciones</th></tr></thead><tbody>${list.map((reservation) => {
       const schedule = scheduleOf(reservation);
-      return `<tr><td>${clientName(reservation.clientId)}</td><td><b>${schedule?.date || ""}</b><small>${schedule?.start || ""} - ${schedule?.end || ""}</small></td><td>${branchName(schedule?.branchId)}</td><td>${areaName(schedule?.areaId)}<small>${machineName(reservation.machineId)}</small></td><td>${badge(reservation.status)}</td><td><div class="timeline">${reservation.history.map((item) => `<span>${esc(item.status)}</span>`).join("")}</div></td><td><div class="row-actions">${reservationActions(reservation)}</div></td></tr>`;
+      return `<tr><td>${clientName(reservation.clientId)}</td><td><b>${schedule?.date || ""}</b><small>${schedule?.start || ""} - ${schedule?.end || ""}</small></td><td>${branchName(schedule?.branchId)}</td><td>${areaName(schedule?.areaId)}<small>${esc(schedule?.type || "Clase")}</small></td><td>${badge(reservation.status)}</td><td><div class="timeline">${reservation.history.map((item) => `<span>${esc(item.status)}</span>`).join("")}</div></td><td><div class="row-actions">${reservationActions(reservation)}</div></td></tr>`;
     }).join("") || `<tr><td colspan="7" class="empty">No hay reservas registradas.</td></tr>`}</tbody></table></div>`;
   }
 
@@ -497,6 +533,60 @@
       const variant = next === "Cancelada" || next === "Rechazada" ? "danger" : next === "Confirmada" || next === "Completada" ? "success" : "secondary";
       return button(next, next === "Cancelada" ? "cancel-reservation" : "reservation-status", variant, `data-id="${reservation.id}" data-next="${next}"`);
     }).join("");
+  }
+
+  function access() {
+    const rows = app.data.clients.map((client) => {
+      const attended = app.data.reservations.filter((reservation) => reservation.clientId === client.id && reservation.attendance === "Presente").length;
+      return [client.code, client.name, branchName(client.branchId), client.currentAreaId ? areaName(client.currentAreaId) : "Sin acceso abierto", attended, client.currentAreaId ? "Advertencia si no registra salida" : "OK"];
+    });
+    return page("Accesos", "La ocupacion de personas se obtiene por accesos y asistencias, no por maquinas individuales.") +
+      `<section class="grid gap-4 sm:grid-cols-3">${metric("Usuarios dentro", app.data.clients.filter((c) => c.currentAreaId).length, "acceso abierto", "scan-line", "orange")}${metric("Asistencias registradas", app.data.reservations.filter((r) => r.attendance === "Presente").length, "clases y sesiones", "user-check", "green")}${metric("Sin salida", app.data.clients.filter((c) => c.currentAreaId).length, "requiere seguimiento", "triangle-alert", "yellow")}</section><section class="panel mt-5 overflow-hidden">${simpleTable(["Codigo", "Cliente", "Sucursal", "Area actual", "Asistencias", "Control"], rows)}</section>`;
+  }
+
+  function coachPanel() {
+    const trainerId = app.user.role === "trainer" ? app.user.trainerId : app.data.trainers[0]?.id;
+    const schedules = app.data.schedules.filter((schedule) => app.user.role === "trainer" ? schedule.trainerId === trainerId : true);
+    return page("Panel del coach", "Clases y sesiones asignadas con participantes, asistencia e historial.") +
+      `<section class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">${schedules.map((schedule) => { const participants = app.data.reservations.filter((reservation) => reservation.scheduleId === schedule.id); const actions = `${button("Ver participantes", "class-participants", "secondary", `data-id="${schedule.id}"`)}${button("Iniciar", "class-start", "secondary", `data-id="${schedule.id}"`)}${button("Finalizar", "class-finish", "success", `data-id="${schedule.id}"`)}${button("Historial", "class-history", "ghost", `data-id="${schedule.id}"`)}`; return `<article class="panel p-5 area-card"><div class="section-head"><div><h2>${esc(schedule.type || areaName(schedule.areaId))}</h2><p>${schedule.date} / ${schedule.start}-${schedule.end}</p></div>${badge(schedule.status)}</div><dl class="detail-grid mt-4"><div><dt>Sucursal</dt><dd>${branchName(schedule.branchId)}</dd></div><div><dt>Area</dt><dd>${areaName(schedule.areaId)}</dd></div><div><dt>Personas inscritas</dt><dd>${participants.length}</dd></div><div><dt>Cupos</dt><dd>${participants.length}/${schedule.capacity}</dd></div><div><dt>Coach</dt><dd>${trainerName(schedule.trainerId)}</dd></div><div><dt>Estado</dt><dd>${schedule.status}</dd></div></dl><div class="row-actions mt-4">${actions}</div></article>`; }).join("")}</section>`;
+  }
+
+  function poolBoxing() {
+    const items = app.data.schedules.filter((schedule) => ["Natacion", "Boxeo"].includes(schedule.type));
+    return page("Piscina y boxeo", "Disponibilidad segun membresia, cupos y amenidades de sucursal.") +
+      `<section class="grid gap-4 md:grid-cols-2">${items.map((schedule) => { const branch = byId("branches", schedule.branchId); const allowed = schedule.type === "Natacion" ? branch?.hasPool : branch?.hasBoxingRing; const spaces = window.GymRules.availability(app.data, schedule.id); return `<article class="panel p-5"><div class="section-head"><div><h2>${esc(schedule.type)}</h2><p>${branchName(schedule.branchId)} / ${schedule.date}</p></div>${badge(allowed ? spaces.state : "No disponible")}</div><dl class="detail-grid mt-4"><div><dt>Horario</dt><dd>${schedule.start}-${schedule.end}</dd></div><div><dt>Cupos</dt><dd>${spaces.available}/${spaces.total}</dd></div><div><dt>Duracion</dt><dd>${schedule.durationMinutes || 60} min</dd></div><div><dt>Regla</dt><dd>${schedule.type === "Boxeo" ? "Basica sin acceso; Haute segun disponibilidad" : "Acceso segun plan"}</dd></div></dl></article>`; }).join("")}</section>`;
+  }
+
+  function store() {
+    const branch = app.filters.storeBranch || "";
+    const category = app.filters.storeCategory || "";
+    const clientId = app.user.clientId || app.data.clients[0]?.id;
+    const items = app.data.products.filter((product) => {
+      if (app.user.role === "client" && (product.status !== "Activo" || Number(product.stock) <= 0)) return false;
+      if (branch && product.branchId !== branch) return false;
+      if (category && product.category !== category) return false;
+      return true;
+    });
+    const discount = discountForClient(clientId);
+    const cart = app.data.carts.filter((item) => item.clientId === clientId);
+    const subtotal = cart.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
+    const total = Math.round(subtotal * (1 - discount / 100));
+    const actions = isAdmin() ? button(`${icon("plus")} Nuevo producto`, "open-product", "primary") : "";
+    return page(app.user.role === "client" ? "Menu / Tienda" : "Cafeteria y suplementos", "Productos, bebidas, suplementos, combos, partners y carrito simulado.", actions) +
+      `<section class="panel p-5"><div class="grid gap-3 md:grid-cols-[220px_220px_1fr]"><select id="storeBranch" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((item) => ({ value: item.id, label: item.name })), branch)}</select><select id="storeCategory" class="form-control"><option value="">Todas las categorias</option>${options(["Cafeteria", "Bebidas", "Suplementos", "Combos"], category)}</select><div class="info-box"><b>Descuento aplicable: ${discount}%</b><span>Total carrito: ${money(total)} (${cart.length} items)</span></div></div></section>
+      <section class="store-grid mt-5">${items.map((product) => `<article class="panel product-card"><img src="${esc(product.image)}" alt="${esc(product.name)}"><div class="p-4"><div class="section-head"><div><h2>${esc(product.name)}</h2><p>${esc(product.category)} / ${branchName(product.branchId)}</p></div>${badge(product.status)}</div><p class="mt-3 text-sm text-slate-600">${esc(product.description)}</p><dl class="detail-grid mt-4"><div><dt>Precio</dt><dd>${money(product.price)}</dd></div><div><dt>Existencia</dt><dd>${product.stock}</dd></div><div><dt>Partner</dt><dd>${partnerName(product.partnerId)}</dd></div></dl><div class="row-actions mt-4">${button("Agregar al carrito", "cart-add", "primary", `data-id="${product.id}"`)}${isAdmin() ? button(icon("pencil"), "open-product", "icon-only", `data-id="${product.id}" title="Editar"`) : ""}</div></div></article>`).join("")}</section>
+      <section class="panel mt-5 p-5"><div class="section-head"><div><h2>Carrito simulado</h2><p>Flujo: seleccionar, descuento, confirmar, pago y factura.</p></div>${cart.length ? button("Confirmar compra", "cart-checkout", "success", `data-client="${clientId}"`) : ""}</div>${simpleTable(["Producto", "Cantidad", "Precio"], cart.map((item) => [productName(item.productId), item.quantity, money(item.price)]))}</section>`;
+  }
+
+  function services() {
+    const rows = app.data.services.map((service) => [service.name, partnerName(service.partnerId), branchName(service.branchId), money(service.price), service.schedule, service.availability, badge(service.status), button("Solicitar cita", "service-request", "secondary", `data-id="${service.id}"`)]);
+    return page("Servicios", "Nutricionista, masajes, coaching adicional y servicios tercerizados.") +
+      `<section class="panel p-5"><div class="info-box"><b>Agenda de nutricionista</b><span>Propuesta pendiente de validacion: el documento no confirma administracion directa de todas las citas.</span></div></section><section class="panel mt-5 overflow-hidden">${simpleTable(["Servicio", "Partner", "Sucursal", "Precio", "Agenda", "Disponibilidad", "Estado", "Accion"], rows)}</section>`;
+  }
+
+  function settings() {
+    return page("Configuracion", "Catalogos iniciales configurables del prototipo.") +
+      `<section class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">${["Coaching", "Natacion", "Boxeo", "Pesas", "Cardio", "Spinning", "Entrenamiento funcional"].map((type) => `<article class="panel p-5"><h2 class="font-black">${type}</h2><p class="mt-2 text-sm text-slate-600">Tipo de clase activo y configurable.</p></article>`).join("")}</section>`;
   }
 
   function maintenance() {
@@ -524,8 +614,9 @@
   }
 
   function payments() {
-    return page("Pagos", "Registro de pagos de membresia con comprobante, sucursal y estado.", button(`${icon("plus")} Registrar pago`, "open-payment", "primary")) +
-      `<section class="panel overflow-hidden"><div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Sucursal</th><th>Plan</th><th>Monto</th><th>Fecha</th><th>Metodo</th><th>Comprobante</th><th>Estado</th></tr></thead><tbody>${app.data.payments.map((payment) => `<tr><td>${clientName(payment.clientId)}</td><td>${branchName(payment.branchId)}</td><td>${planName(payment.planId)}</td><td>Q${payment.amount}</td><td>${payment.date}</td><td>${esc(payment.method)}</td><td>${esc(payment.receipt)}</td><td>${badge(payment.status)}</td></tr>`).join("")}</tbody></table></div></section>`;
+    const list = app.data.payments.filter((payment) => app.user.role !== "client" || payment.clientId === app.user.clientId);
+    return page(app.user.role === "client" ? "Mis pagos y facturas" : "Ventas y pagos", "Pagos, ventas y facturacion electronica simulada.", app.user.role === "admin" ? button(`${icon("plus")} Registrar pago`, "open-payment", "primary") : "") +
+      `<section class="panel overflow-hidden"><div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Sucursal</th><th>Concepto</th><th>Monto</th><th>Fecha</th><th>Metodo</th><th>Factura</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${list.map((payment) => `<tr><td>${clientName(payment.clientId)}<small>${esc(payment.invoice?.email || "")}</small></td><td>${branchName(payment.branchId)}</td><td>${esc(payment.itemType || "Membresia")}<small>${payment.planId ? planName(payment.planId) : esc(payment.description || "")}</small></td><td>${money(payment.amount)}</td><td>${payment.date}</td><td>${esc(payment.method)}</td><td>${esc(payment.invoice?.series || "-")}-${esc(payment.invoice?.number || "-")}<small>${esc(payment.invoice?.status || "Pendiente de emision")}</small></td><td>${badge(payment.status)}</td><td><div class="row-actions">${button("Ver factura", "invoice-view", "secondary", `data-id="${payment.id}"`)}${button("Descargar", "invoice-download", "ghost", `data-id="${payment.id}"`)}${button("Enviar por correo", "invoice-send", "success", `data-id="${payment.id}"`)}</div></td></tr>`).join("")}</tbody></table></div></section>`;
   }
 
   function reports() {
@@ -541,7 +632,7 @@
     });
     const paid = filteredPayments.filter((payment) => payment.status === "Pagado");
     return page("Reportes", "Categorias administrativas con filtros, graficas, tablas y exportaciones.", `${button(`${icon("printer")} Imprimir`, "print-report", "ghost")}${button(`${icon("download")} Exportar CSV`, "export-report", "secondary")}${button(`${icon("file-down")} Descargar reporte`, "download-report", "primary")}`) +
-      `<section class="panel p-5"><div class="tabs">${["Clientes", "Empleados", "Compras", "Financiero"].map((name) => `<button class="${tab === name ? "active" : ""}" data-action="report-tab" data-tab="${name}">${name}</button>`).join("")}</div><div class="mt-4 grid gap-3 lg:grid-cols-5"><input id="reportFrom" class="form-control" type="date" value="${esc(f.from || "2026-09-01")}"><input id="reportTo" class="form-control" type="date" value="${esc(f.to || "2026-09-30")}"><select id="reportBranch" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((b) => ({ value: b.id, label: b.name })), f.branch || "")}</select><select id="reportMethod" class="form-control"><option value="">Todos los metodos</option>${options(["Efectivo", "Tarjeta", "Transferencia"], f.method || "")}</select><select id="reportStatus" class="form-control"><option value="">Todos los estados</option>${options(["Pendiente", "Pagado", "Rechazado", "Anulado", "Confirmada", "Cancelada", "En mantenimiento", "Aprobada", "Recibida", "En revision"], f.status || "")}</select></div></section>
+      `<section class="panel p-5"><div class="tabs">${["Clientes", "Empleados", "Compras", "Financiero", "Diario"].map((name) => `<button class="${tab === name ? "active" : ""}" data-action="report-tab" data-tab="${name}">${name}</button>`).join("")}</div><div class="mt-4 grid gap-3 lg:grid-cols-5"><input id="reportFrom" class="form-control" type="date" value="${esc(f.from || "2026-09-01")}"><input id="reportTo" class="form-control" type="date" value="${esc(f.to || "2026-09-30")}"><select id="reportBranch" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((b) => ({ value: b.id, label: b.name })), f.branch || "")}</select><select id="reportMethod" class="form-control"><option value="">Todos los metodos</option>${options(["Efectivo", "Tarjeta", "Transferencia"], f.method || "")}</select><select id="reportStatus" class="form-control"><option value="">Todos los estados</option>${options(["Pendiente", "Pagado", "Rechazado", "Anulado", "Confirmada", "Cancelada", "En mantenimiento", "Aprobada", "Recibida", "En revision"], f.status || "")}</select></div></section>
       ${reportBody(tab, filteredPayments, paid)}`;
   }
 
@@ -549,6 +640,7 @@
     if (tab === "Clientes") return clientReport();
     if (tab === "Empleados") return employeeReport();
     if (tab === "Compras") return purchaseReport();
+    if (tab === "Diario") return dailyReport();
     return financialReport(filteredPayments, paid);
   }
 
@@ -572,7 +664,7 @@
 
   function employeeReport() {
     const bonusApproved = app.data.employees.filter((employee) => ["Coach", "Recepcionista"].includes(employee.position) && bonusState(employee).approved).length;
-    return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Empleados", app.data.employees.length, "nomina demo", "id-card", "blue")}${metric("Cumplen ambas metas", bonusApproved, "bonificacion aprobada", "award", "green")}${metric("No alcanzadas", app.data.staffMetrics.length - bonusApproved, "una o ninguna meta", "triangle-alert", "yellow")}${metric("Monto aprobado", money(app.data.employees.filter((e) => bonusState(e).approved).reduce((s, e) => s + Number(e.bonus || 0), 0)), "bonificaciones", "wallet", "orange")}</section><section class="mt-5 grid gap-5 xl:grid-cols-2">${summaryTable("Empleados por sucursal", Object.entries(countBy(app.data.employees, (e) => branchName(e.branchId))).map(([k, v]) => [k, v]))}${summaryTable("Empleados por puesto", Object.entries(countBy(app.data.employees, (e) => e.position)).map(([k, v]) => [k, v]))}</section><section class="panel mt-5 overflow-hidden"><div class="section-head p-5"><div><h2>Metricas por empleado</h2><p>Cumplimiento de metas y bonificaciones.</p></div></div><div class="table-wrap"><table><thead><tr><th>Empleado</th><th>Puesto</th><th>Meta 1</th><th>Meta 2</th><th>Resultado</th></tr></thead><tbody>${app.data.employees.filter((e) => metricRecord(e.id)).map((employee) => { const state = bonusState(employee); return `<tr><td>${esc(employee.name)}</td><td>${esc(employee.position)}</td><td>${badge(metricMet(state.record.metrics[0]) ? "Cumplida" : "No cumplida")}</td><td>${badge(metricMet(state.record.metrics[1]) ? "Cumplida" : "No cumplida")}</td><td>${state.approved ? "Bonificacion aprobada" : "Bonificacion no alcanzada"}</td></tr>`; }).join("")}</tbody></table></div></section>`;
+    return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Empleados", app.data.employees.length, "nomina demo", "id-card", "blue")}${metric("Con bono", bonusApproved, "bono parcial o completo", "award", "green")}${metric("Sin bono", app.data.staffMetrics.length - bonusApproved, "no alcanzado o pendiente", "triangle-alert", "yellow")}${metric("Monto aprobado", money(app.data.employees.reduce((s, e) => s + bonusState(e).bonus, 0)), "bonificaciones", "wallet", "orange")}</section><section class="mt-5 grid gap-5 xl:grid-cols-2">${summaryTable("Empleados por sucursal", Object.entries(countBy(app.data.employees, (e) => branchName(e.branchId))).map(([k, v]) => [k, v]))}${summaryTable("Empleados por puesto", Object.entries(countBy(app.data.employees, (e) => e.position)).map(([k, v]) => [k, v]))}</section><section class="panel mt-5 overflow-hidden"><div class="section-head p-5"><div><h2>Metricas por empleado</h2><p>Cumplimiento de metas y bonificaciones.</p></div></div><div class="table-wrap"><table><thead><tr><th>Empleado</th><th>Puesto</th><th>Meta 1</th><th>Meta 2</th><th>Resultado</th></tr></thead><tbody>${app.data.employees.filter((e) => metricRecord(e.id)).map((employee) => { const state = bonusState(employee); return `<tr><td>${esc(employee.name)}</td><td>${esc(employee.position)}</td><td>${badge(metricMet(state.record.metrics[0]) ? "Cumplida" : "No cumplida")}</td><td>${badge(metricMet(state.record.metrics[1]) ? "Cumplida" : "No cumplida")}</td><td>${esc(state.state)}</td></tr>`; }).join("")}</tbody></table></div></section>`;
   }
 
   function purchaseReport() {
@@ -591,7 +683,7 @@
   function activeCountFor(tab) {
     if (tab === "Clientes") return app.data.clients.filter((x) => x.status === "Activo").length;
     if (tab === "Membresias") return app.data.memberships.filter((x) => x.status === "Activa").length;
-    if (tab === "Maquinas") return app.data.machines.filter((x) => x.status === "Disponible").length;
+    if (tab === "Maquinas") return app.data.machines.filter((x) => x.status === "Operativo").length;
     if (tab === "Mantenimientos") return app.data.maintenance.filter((x) => x.status === "En proceso").length;
     return app.data.branches.filter((x) => x.status === "Activa").length;
   }
@@ -620,8 +712,23 @@
 
   function reservationForm() {
     const clientOptions = app.user.role === "client" ? app.data.clients.filter((client) => client.id === app.user.clientId) : app.data.clients;
-    showModal("Nueva reserva", `<form id="reservationForm" class="grid gap-4" novalidate><label class="form-field"><span>Cliente</span><select id="reservationClient" class="form-control">${options(clientOptions.map((client) => ({ value: client.id, label: client.name })))}</select></label><label class="form-field"><span>Horario</span><select id="reservationSchedule" class="form-control">${options(app.data.schedules.map((schedule) => ({ value: schedule.id, label: `${schedule.date} ${schedule.start}-${schedule.end} / ${areaName(schedule.areaId)} / ${branchName(schedule.branchId)}` })))}</select></label><label class="form-field"><span>Maquina opcional</span><select id="reservationMachine" class="form-control"><option value="">Reservar area completa</option>${app.data.machines.map((machine) => `<option value="${machine.id}">${esc(machine.code)} / ${esc(machine.name)} / ${esc(areaName(machine.areaId))}</option>`).join("")}</select></label><div id="reservationPreview" class="info-box"></div><button class="btn btn-primary" type="submit">Confirmar reserva ${icon("check")}</button></form>`);
+    showModal("Nueva reserva", `<form id="reservationForm" class="grid gap-4" novalidate><label class="form-field"><span>Cliente</span><select id="reservationClient" class="form-control">${options(clientOptions.map((client) => ({ value: client.id, label: client.name })))}</select></label><label class="form-field"><span>Horario</span><select id="reservationSchedule" class="form-control">${options(app.data.schedules.map((schedule) => ({ value: schedule.id, label: `${schedule.date} ${schedule.start}-${schedule.end} / ${schedule.type || areaName(schedule.areaId)} / ${branchName(schedule.branchId)}` })))}</select></label><div id="reservationPreview" class="info-box"></div><button class="btn btn-primary" type="submit">Confirmar reserva ${icon("check")}</button></form>`);
     updateReservationPreview();
+  }
+
+  function dailyReport() {
+    const rows = app.data.dailyReports.map((report) => [report.date, branchName(report.branchId), report.attendedUsers, `${report.averageMinutes} min`, report.peakHour, report.membershipsSold, report.productsSold, report.partnerServiceSales, report.swimmingAttendance, report.boxingAttendance, money(report.totalIncome), report.accessWarnings, report.emailStatus]);
+    return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Reportes guardados", app.data.dailyReports.length, "persisten aunque falle el correo", "save", "green")}${metric("Asistencias", app.data.dailyReports.reduce((s, r) => s + r.attendedUsers, 0), "usuarios que asistieron", "user-check", "blue")}${metric("Ingresos diarios", money(app.data.dailyReports.reduce((s, r) => s + r.totalIncome, 0)), "total consolidado", "wallet", "green")}${metric("Advertencias", app.data.dailyReports.reduce((s, r) => s + r.accessWarnings, 0), "accesos sin salida", "triangle-alert", "yellow")}</section><section class="panel mt-5 overflow-hidden">${simpleTable(["Fecha", "Sucursal", "Asistieron", "Tiempo prom.", "Hora pico", "Membresias", "Productos", "Servicios", "Natacion", "Boxeo", "Ingresos", "Sin salida", "Correo"], rows)}</section>`;
+  }
+
+  function planForm(plan = {}) {
+    if (!isAdmin()) return toast("Solo administracion puede editar membresias.", "error");
+    showModal(plan.id ? "Editar membresia" : "Nueva membresia", `<form id="planForm" data-id="${esc(plan.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Nombre</span><input id="planNameInput" class="form-control" value="${esc(plan.name || "")}" required></label><label class="form-field"><span>Precio</span><input id="planPriceInput" type="number" class="form-control" value="${esc(plan.price || 250)}"></label><label class="form-field"><span>Duracion dias</span><input id="planDurationInput" type="number" class="form-control" value="${esc(plan.durationDays || 30)}"></label><label class="form-field"><span>Limite de reservas</span><input id="planReservationLimit" type="number" class="form-control" value="${esc(plan.reservationLimit || 4)}"></label><label class="form-field"><span>Estado</span><select id="planStatusInput" class="form-control">${options(["Activa", "Inactiva"], plan.status || "Activa")}</select></label><label class="form-field"><span>Areas permitidas</span><select id="planAreasInput" class="form-control" multiple>${app.data.areas.map((area) => `<option value="${area.id}" ${(plan.areas || []).includes(area.id) ? "selected" : ""}>${esc(area.name)} / ${branchName(area.branchId)}</option>`).join("")}</select></label><label class="form-field md:col-span-2"><span>Beneficios (uno por linea: nombre | limite | periodo)</span><textarea id="planBenefitsInput" class="form-control" rows="5">${esc((plan.benefits || []).map((item) => `${item.name} | ${item.limit}${item.unit || ""} | ${item.period}`).join("\n"))}</textarea></label><label class="form-field md:col-span-2"><span>Pendientes de confirmacion</span><input id="planPendingInput" class="form-control" value="${esc((plan.pendingBenefits || []).join(", "))}"></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar membresia</button></form>`);
+  }
+
+  function productForm(product = {}) {
+    if (!isAdmin()) return toast("Solo administracion puede editar productos.", "error");
+    showModal(product.id ? "Editar producto" : "Nuevo producto", `<form id="productForm" data-id="${esc(product.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Codigo</span><input id="productCode" class="form-control" value="${esc(product.code || "")}" required></label><label class="form-field"><span>Nombre</span><input id="productName" class="form-control" value="${esc(product.name || "")}" required></label><label class="form-field"><span>Categoria</span><select id="productCategory" class="form-control">${options(["Cafeteria", "Bebidas", "Suplementos", "Combos"], product.category || "Cafeteria")}</select></label><label class="form-field"><span>Precio</span><input id="productPrice" type="number" class="form-control" value="${esc(product.price || 25)}"></label><label class="form-field"><span>Existencia</span><input id="productStock" type="number" class="form-control" value="${esc(product.stock || 0)}"></label><label class="form-field"><span>Sucursal</span><select id="productBranch" class="form-control">${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), product.branchId || "b1")}</select></label><label class="form-field"><span>Partner</span><select id="productPartner" class="form-control"><option value="">Renovatio Gym</option>${options(app.data.partners.map((partner) => ({ value: partner.id, label: partner.name })), product.partnerId || "")}</select></label><label class="form-field"><span>Estado</span><select id="productStatus" class="form-control">${options(["Activo", "Inactivo"], product.status || "Activo")}</select></label><label class="form-field md:col-span-2"><span>Imagen URL</span><input id="productImage" class="form-control" value="${esc(product.image || "")}"></label><label class="form-field md:col-span-2"><span>Descripcion</span><textarea id="productDescription" class="form-control" rows="3">${esc(product.description || "")}</textarea></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar producto</button></form>`);
   }
 
   function branchForm(branch = {}) {
@@ -637,12 +744,14 @@
   }
 
   function employeeForm(employee = {}) {
-    showModal(employee.id ? "Editar empleado" : "Nuevo empleado", `<form id="employeeForm" data-id="${esc(employee.id || "")}" class="grid gap-4 md:grid-cols-2" novalidate><label class="form-field"><span>Codigo</span><input id="employeeCode" class="form-control" value="${esc(employee.code || `EMP-${String(app.data.employees.length + 1).padStart(3, "0")}`)}" required></label><label class="form-field"><span>Nombre completo</span><input id="employeeName" class="form-control" value="${esc(employee.name || "")}" required></label><label class="form-field"><span>Puesto</span><select id="employeePosition" class="form-control">${options(["Recepcionista", "Coach", "Administrador", "Mantenimiento"], employee.position || "Recepcionista")}</select></label><label class="form-field"><span>Sucursal</span><select id="employeeBranch" class="form-control">${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), employee.branchId || "b1")}</select></label><label class="form-field"><span>Telefono</span><input id="employeePhone" class="form-control" value="${esc(employee.phone || "")}"></label><label class="form-field"><span>Correo</span><input id="employeeEmail" type="email" class="form-control" value="${esc(employee.email || "")}"></label><label class="form-field"><span>Fecha de contratacion</span><input id="employeeHired" type="date" class="form-control" value="${esc(employee.hiredAt || today)}"></label><label class="form-field"><span>Salario base</span><input id="employeeSalary" type="number" class="form-control" value="${esc(employee.baseSalary || 3600)}"></label><label class="form-field"><span>Bonificacion posible</span><input id="employeeBonus" type="number" class="form-control" value="${esc(employee.bonus || 500)}"></label><label class="form-field"><span>Estado</span><select id="employeeStatus" class="form-control">${options(["Activo", "Inactivo", "Suspendido", "Vacaciones"], employee.status || "Activo")}</select></label><label class="form-field md:col-span-2"><span>Horario laboral</span><input id="employeeSchedule" class="form-control" value="${esc(employee.workSchedule || "Lun-Vie 08:00-16:00")}"></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar empleado</button></form>`);
+    showModal(employee.id ? "Editar empleado" : "Nuevo empleado", `<form id="employeeForm" data-id="${esc(employee.id || "")}" class="grid gap-4 md:grid-cols-2" novalidate><label class="form-field"><span>Codigo</span><input id="employeeCode" class="form-control" value="${esc(employee.code || `EMP-${String(app.data.employees.length + 1).padStart(3, "0")}`)}" required></label><label class="form-field"><span>Nombre completo</span><input id="employeeName" class="form-control" value="${esc(employee.name || "")}" required></label><label class="form-field"><span>Puesto</span><select id="employeePosition" class="form-control">${options(["Recepcionista", "Coach", "Administrador", "Mantenimiento"], employee.position || "Recepcionista")}</select></label><label class="form-field"><span>Sucursal</span><select id="employeeBranch" class="form-control">${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), employee.branchId || "b1")}</select></label><label class="form-field"><span>Telefono</span><input id="employeePhone" class="form-control" value="${esc(employee.phone || "")}"></label><label class="form-field"><span>Correo</span><input id="employeeEmail" type="email" class="form-control" value="${esc(employee.email || "")}"></label><label class="form-field"><span>Fecha de contratacion</span><input id="employeeHired" type="date" class="form-control" value="${esc(employee.hiredAt || today)}"></label><label class="form-field"><span>Sueldo base</span><input id="employeeSalary" type="number" class="form-control" value="${esc(employee.baseSalary || 3600)}"></label><label class="form-field"><span>Estado</span><select id="employeeStatus" class="form-control">${options(["Activo", "Inactivo", "Suspendido", "Vacaciones"], employee.status || "Activo")}</select></label><label class="form-field md:col-span-2"><span>Horario laboral</span><input id="employeeSchedule" class="form-control" value="${esc(employee.workSchedule || "Lun-Vie 08:00-16:00")}"></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar empleado</button></form>`);
   }
 
   function bonusForm(employee) {
     if (!isAdmin()) return toast("Solo administracion puede modificar bonificaciones.", "error");
-    showModal("Modificar bonificacion", `<form id="bonusForm" data-id="${esc(employee.id)}" class="grid gap-4 md:grid-cols-2"><div class="info-box md:col-span-2"><b>${esc(employee.name)} / ${esc(employee.position)}</b><span>${branchName(employee.branchId)}</span></div><label class="form-field"><span>Sueldo base</span><input id="bonusBaseSalary" type="number" class="form-control" value="${esc(employee.baseSalary || 0)}"></label><label class="form-field"><span>Bonificacion posible</span><input id="bonusAmount" type="number" class="form-control" value="${esc(employee.bonus || 0)}"></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar bonificacion</button></form>`);
+    const record = metricRecord(employee.id);
+    const metrics = record?.metrics || [];
+    showModal("Modificar metricas y bonos", `<form id="bonusForm" data-id="${esc(employee.id)}" class="grid gap-4 md:grid-cols-2"><div class="info-box md:col-span-2"><b>${esc(employee.name)} / ${esc(employee.position)}</b><span>Cada bono se calcula por separado.</span></div><label class="form-field"><span>Sueldo base</span><input id="bonusBaseSalary" type="number" class="form-control" value="${esc(employee.baseSalary || 0)}"></label>${metrics.map((metric, index) => `<label class="form-field"><span>Monto bono ${index + 1}</span><input id="metricBonus${index}" type="number" class="form-control" value="${esc(metric.bonusAmount || 0)}"></label><label class="form-field"><span>Umbral ${index + 1} (%)</span><input id="metricThreshold${index}" type="number" class="form-control" value="${esc(metric.threshold || 80)}"></label>`).join("")}<button class="btn btn-primary md:col-span-2" type="submit">Guardar configuracion</button></form>`);
   }
 
   function purchaseOrderForm(order = {}) {
@@ -662,7 +771,7 @@
   }
 
   function machineForm(machine = {}) {
-    showModal(machine.id ? "Editar maquina" : "Nueva maquina", `<form id="machineForm" data-id="${esc(machine.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Codigo</span><input id="machineCode" class="form-control" value="${esc(machine.code || "")}" required></label><label class="form-field"><span>Nombre</span><input id="machineName" class="form-control" value="${esc(machine.name || "")}" required></label><label class="form-field"><span>Tipo</span><input id="machineType" class="form-control" value="${esc(machine.type || "")}" required></label><label class="form-field"><span>Area</span><select id="machineArea" class="form-control">${options(app.data.areas.map((area) => ({ value: area.id, label: `${area.name} / ${branchName(area.branchId)}` })), machine.areaId || "a1")}</select></label><label class="form-field"><span>Marca</span><input id="machineBrand" class="form-control" value="${esc(machine.brand || "")}"></label><label class="form-field"><span>Modelo</span><input id="machineModel" class="form-control" value="${esc(machine.model || "")}"></label><label class="form-field"><span>Capacidad simultanea</span><input id="machineCapacity" type="number" class="form-control" value="${esc(machine.simultaneousCapacity || 1)}"></label><label class="form-field"><span>Estado</span><select id="machineStatus" class="form-control">${options(["Disponible", "Reservada", "En uso", "En mantenimiento", "Fuera de servicio"], machine.status || "Disponible")}</select></label><label class="form-field"><span>Ultimo mantenimiento</span><input id="machineLast" type="date" class="form-control" value="${esc(machine.lastMaintenance || "2026-09-01")}"></label><label class="form-field"><span>Proximo mantenimiento</span><input id="machineNext" type="date" class="form-control" value="${esc(machine.nextMaintenance || "2026-10-01")}"></label><label class="form-field md:col-span-2"><span>Observaciones</span><textarea id="machineNotes" class="form-control" rows="2">${esc(machine.notes || "")}</textarea></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar maquina</button></form>`);
+    showModal(machine.id ? "Editar equipo" : "Nuevo equipo", `<form id="machineForm" data-id="${esc(machine.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Codigo</span><input id="machineCode" class="form-control" value="${esc(machine.code || "")}" required></label><label class="form-field"><span>Nombre</span><input id="machineName" class="form-control" value="${esc(machine.name || "")}" required></label><label class="form-field"><span>Tipo</span><input id="machineType" class="form-control" value="${esc(machine.type || "")}" required></label><label class="form-field"><span>Area</span><select id="machineArea" class="form-control">${options(app.data.areas.map((area) => ({ value: area.id, label: `${area.name} / ${branchName(area.branchId)}` })), machine.areaId || "a-cardio")}</select></label><label class="form-field"><span>Marca</span><input id="machineBrand" class="form-control" value="${esc(machine.brand || "")}"></label><label class="form-field"><span>Modelo</span><input id="machineModel" class="form-control" value="${esc(machine.model || "")}"></label><label class="form-field"><span>Capacidad operativa</span><input id="machineCapacity" type="number" class="form-control" value="${esc(machine.simultaneousCapacity || 1)}"></label><label class="form-field"><span>Estado</span><select id="machineStatus" class="form-control">${options(["Operativo", "En mantenimiento", "Danado", "Fuera de servicio", "Retirado", "Pendiente de documentacion"], machine.status || "Pendiente de documentacion")}</select></label><label class="form-field"><span>Ultimo mantenimiento</span><input id="machineLast" type="date" class="form-control" value="${esc(machine.lastMaintenance || "2026-09-01")}"></label><label class="form-field"><span>Proximo mantenimiento</span><input id="machineNext" type="date" class="form-control" value="${esc(machine.nextMaintenance || "2026-10-01")}"></label><label class="form-field md:col-span-2"><span>Observaciones / certificado</span><textarea id="machineNotes" class="form-control" rows="2">${esc(machine.notes || "")}</textarea></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar equipo</button></form>`);
   }
 
   function maintenanceForm(item = {}) {
@@ -681,18 +790,19 @@
     const scheduleId = $("#reservationSchedule")?.value;
     if (!scheduleId) return;
     const schedule = byId("schedules", scheduleId);
-    const machineId = $("#reservationMachine")?.value || "";
-    const spaces = window.GymRules.availability(app.data, scheduleId, machineId);
-    const validation = window.GymRules.validateReservation(app.data, { clientId: $("#reservationClient")?.value, scheduleId, machineId });
+    const spaces = window.GymRules.availability(app.data, scheduleId);
+    const validation = window.GymRules.validateReservation(app.data, { clientId: $("#reservationClient")?.value, scheduleId });
     $("#reservationPreview").innerHTML = `<b>${areaName(schedule.areaId)} / ${branchName(schedule.branchId)} / ${schedule.date} ${schedule.start}-${schedule.end}</b><span>${spaces.available} cupos disponibles de ${spaces.total}. Ocupacion ${spaces.percent}%.</span><small class="${validation.ok ? "text-emerald-700" : "text-red-700"}">${esc(validation.reason)}</small>`;
   }
 
   function handleSubmit(event) {
     const form = event.target;
-    const managed = ["reservationForm", "branchForm", "clientForm", "employeeForm", "bonusForm", "areaForm", "machineForm", "maintenanceForm", "finishMaintenanceForm", "paymentForm", "purchaseOrderForm", "receivePurchaseOrderForm"];
+    const managed = ["reservationForm", "planForm", "productForm", "branchForm", "clientForm", "employeeForm", "bonusForm", "areaForm", "machineForm", "maintenanceForm", "finishMaintenanceForm", "paymentForm", "purchaseOrderForm", "receivePurchaseOrderForm"];
     if (!managed.includes(form.id)) return;
     event.preventDefault();
     if (form.id === "reservationForm") return submitReservation();
+    if (form.id === "planForm") return submitPlan(form);
+    if (form.id === "productForm") return submitProduct(form);
     if (form.id === "branchForm") return submitBranch(form);
     if (form.id === "clientForm") return submitClient(form);
     if (form.id === "employeeForm") return submitEmployee(form);
@@ -707,9 +817,36 @@
   }
 
   function submitReservation() {
-    const result = window.GymReservations.create(app.data, { clientId: $("#reservationClient").value, scheduleId: $("#reservationSchedule").value, machineId: $("#reservationMachine").value, status: "Confirmada" }, app.user);
+    const result = window.GymReservations.create(app.data, { clientId: $("#reservationClient").value, scheduleId: $("#reservationSchedule").value, status: "Confirmada" }, app.user);
     if (!result.ok) return toast(result.reason, "error");
     save(); closeModal(); render(); toast("Reserva creada y cupos actualizados.");
+  }
+
+  function submitPlan(form) {
+    if (!isAdmin()) return toast("Solo administracion puede guardar membresias.", "error");
+    const id = form.dataset.id;
+    const plan = id ? byId("plans", id) : { id: uid("p") };
+    const selectedAreas = Array.from($("#planAreasInput").selectedOptions).map((option) => option.value);
+    const benefits = $("#planBenefitsInput").value.split("\n").map((line) => {
+      const [name, limit = "Configurable", period = "mes"] = line.split("|").map((part) => part.trim());
+      return name ? { name, limit, period } : null;
+    }).filter(Boolean);
+    Object.assign(plan, { name: $("#planNameInput").value.trim(), price: Number($("#planPriceInput").value), durationDays: Number($("#planDurationInput").value), reservationLimit: Number($("#planReservationLimit").value), status: $("#planStatusInput").value, areas: selectedAreas, benefits, pendingBenefits: $("#planPendingInput").value.split(",").map((item) => item.trim()).filter(Boolean) });
+    if (!plan.name) return toast("El nombre de la membresia es obligatorio.", "error");
+    if (!id) app.data.plans.unshift(plan);
+    window.GymReservations.audit(app.data, app.user, "Membresias", id ? "Editar plan" : "Crear plan", plan.name);
+    save(); closeModal(); render(); toast("Membresia guardada.");
+  }
+
+  function submitProduct(form) {
+    if (!isAdmin()) return toast("Solo administracion puede guardar productos.", "error");
+    const id = form.dataset.id;
+    const product = id ? byId("products", id) : { id: uid("prod") };
+    Object.assign(product, { code: $("#productCode").value.trim(), name: $("#productName").value.trim(), description: $("#productDescription").value.trim(), category: $("#productCategory").value, image: $("#productImage").value.trim() || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=80", price: Number($("#productPrice").value), stock: Number($("#productStock").value), branchId: $("#productBranch").value, partnerId: $("#productPartner").value, status: $("#productStatus").value });
+    if (!product.code || !product.name) return toast("Codigo y nombre son obligatorios.", "error");
+    if (!id) app.data.products.unshift(product);
+    window.GymReservations.audit(app.data, app.user, "Cafeteria", id ? "Editar producto" : "Crear producto", product.name);
+    save(); closeModal(); render(); toast("Producto guardado.");
   }
 
   function submitBranch(form) {
@@ -751,10 +888,10 @@
     if (!code || !$("#employeeName").value.trim()) return toast("Codigo y nombre son obligatorios.", "error");
     if (app.data.employees.some((employee) => employee.code.toLowerCase() === code.toLowerCase() && employee.id !== id)) return toast("El codigo de empleado ya existe.", "error");
     const employee = id ? byId("employees", id) : { id: uid("e") };
-    Object.assign(employee, { code, name: $("#employeeName").value.trim(), position: $("#employeePosition").value, branchId: $("#employeeBranch").value, phone: $("#employeePhone").value.trim(), email: $("#employeeEmail").value.trim(), hiredAt: $("#employeeHired").value, baseSalary: Number($("#employeeSalary").value), bonus: Number($("#employeeBonus").value), workSchedule: $("#employeeSchedule").value.trim(), status: $("#employeeStatus").value });
+    Object.assign(employee, { code, name: $("#employeeName").value.trim(), position: $("#employeePosition").value, branchId: $("#employeeBranch").value, phone: $("#employeePhone").value.trim(), email: $("#employeeEmail").value.trim(), hiredAt: $("#employeeHired").value, baseSalary: Number($("#employeeSalary").value), workSchedule: $("#employeeSchedule").value.trim(), status: $("#employeeStatus").value });
     if (!id) app.data.employees.unshift(employee);
     if (["Coach", "Recepcionista"].includes(employee.position) && !metricRecord(employee.id)) {
-      app.data.staffMetrics.unshift({ employeeId: employee.id, period: "2026-09", metrics: employee.position === "Coach" ? [{ label: "Sesiones impartidas", goal: 45, result: 0, unit: "sesiones" }, { label: "Asistencia o satisfaccion", goal: 90, result: 0, unit: "%" }] : [{ label: "Membresias o renovaciones gestionadas", goal: 35, result: 0, unit: "gestiones" }, { label: "Pagos o clientes atendidos", goal: 100, result: 0, unit: "atenciones" }], assignedClasses: employee.position === "Coach" ? "Por asignar" : "No aplica", clientsServed: 0, absences: 0, rating: 0 });
+      app.data.staffMetrics.unshift({ employeeId: employee.id, period: "2026-09", metrics: employee.position === "Coach" ? [{ label: "Sesiones de coaching completadas", goal: 45, result: 0, unit: "sesiones", threshold: 85, bonusAmount: 700, status: "Pendiente de evaluacion" }, { label: "Satisfaccion de clientes", goal: 90, result: 0, unit: "%", threshold: 80, bonusAmount: 500, status: "Pendiente de evaluacion" }] : [{ label: "Venta de membresias", goal: 35, result: 0, unit: "ventas", threshold: 85, bonusAmount: 700, status: "Pendiente de evaluacion" }, { label: "Atencion o satisfaccion del cliente", goal: 90, result: 0, unit: "%", threshold: 80, bonusAmount: 500, status: "Pendiente de evaluacion" }], assignedClasses: employee.position === "Coach" ? "Por asignar" : "No aplica", clientsServed: 0, absences: 0, rating: 0 });
     }
     window.GymReservations.audit(app.data, app.user, "Empleados", id ? "Editar empleado" : "Crear empleado", employee.name);
     save(); closeModal(); render(); toast("Empleado guardado.");
@@ -764,7 +901,11 @@
     if (!isAdmin()) return toast("Solo administracion puede modificar bonificaciones.", "error");
     const employee = byId("employees", form.dataset.id);
     employee.baseSalary = Number($("#bonusBaseSalary").value);
-    employee.bonus = Number($("#bonusAmount").value);
+    const record = metricRecord(employee.id);
+    (record?.metrics || []).forEach((metric, index) => {
+      metric.bonusAmount = Number($(`#metricBonus${index}`).value);
+      metric.threshold = Number($(`#metricThreshold${index}`).value);
+    });
     window.GymReservations.audit(app.data, app.user, "Metricas del personal", "Modificar bonificacion", employee.name);
     save(); closeModal(); render(); toast("Bonificacion actualizada.");
   }
@@ -807,16 +948,19 @@
     item.finishedAt = $("#finishDate").value;
     item.finalCost = Number($("#finishCost").value);
     item.result = $("#finishResult").value.trim();
-    machine.status = "Disponible";
+    machine.status = machine.certificate?.status === "Aprobado" ? "Operativo" : "Pendiente de documentacion";
     machine.lastMaintenance = item.finishedAt;
     save(); closeModal(); render(); toast("Mantenimiento finalizado y maquina disponible.");
   }
 
   function submitPayment() {
     if (!isAdmin()) return toast("Solo administracion puede registrar pagos.", "error");
-    app.data.payments.unshift({ id: uid("pay"), clientId: $("#paymentClient").value, branchId: $("#paymentBranch").value, planId: $("#paymentPlan").value, amount: Number($("#paymentAmount").value), date: $("#paymentDate").value, method: $("#paymentMethod").value, receipt: $("#paymentReceipt").value, status: $("#paymentStatus").value });
+    const client = byId("clients", $("#paymentClient").value);
+    const payment = { id: uid("pay"), clientId: client.id, branchId: $("#paymentBranch").value, itemType: "Membresia", planId: $("#paymentPlan").value, amount: Number($("#paymentAmount").value), date: $("#paymentDate").value, method: $("#paymentMethod").value, receipt: $("#paymentReceipt").value, status: $("#paymentStatus").value };
+    payment.invoice = createInvoice(payment, client, payment.status === "Pagado" ? "Emitida" : "Pendiente de emision");
+    app.data.payments.unshift(payment);
     window.GymReservations.audit(app.data, app.user, "Pagos", "Registrar pago", $("#paymentReceipt").value);
-    save(); closeModal(); render(); toast("Pago registrado.");
+    save(); closeModal(); render(); toast("Pago registrado y factura simulada creada.");
   }
 
   function submitPurchaseOrder(form) {
@@ -834,6 +978,7 @@
 
   function submitReceivePurchaseOrder(form) {
     const order = byId("purchaseOrders", form.dataset.id);
+    if (order.purchaseType === "Nueva maquina" && order.certificate?.status !== "Aprobado") return toast("Una orden de equipo no puede recibirse conforme sin certificado aprobado.", "error");
     const receivedItems = order.items.map((item, index) => ({ name: item.name, ordered: item.quantity, received: Number($(`#receiveQty${index}`).value) }));
     order.status = "Recibida";
     order.reception = { receivedAt: $("#receiveDate").value, complete: $("#receiveComplete").value, inventory: $("#receiveInventory").value === "si", observations: $("#receiveObs").value.trim(), items: receivedItems };
@@ -842,7 +987,7 @@
     if (order.purchaseType === "Nueva maquina" && order.reception.inventory && confirm("Continuar al formulario Registrar maquina con datos de la orden?")) {
       const area = app.data.areas.find((item) => item.branchId === order.branchId) || app.data.areas[0];
       const first = order.items[0] || {};
-      machineForm({ code: `MA-${Date.now().toString().slice(-4)}`, name: first.name || "Nueva maquina", type: "Equipo", areaId: area?.id, brand: order.supplier, model: order.number, simultaneousCapacity: 1, acquiredAt: order.reception.receivedAt, lastMaintenance: order.reception.receivedAt, nextMaintenance: "2026-12-10", notes: `Origen ${order.number}. ${order.observations || ""}`, status: "Disponible" });
+      machineForm({ code: `MA-${Date.now().toString().slice(-4)}`, name: first.name || "Nueva maquina", type: "Equipo", areaId: area?.id, brand: order.supplier, model: order.number, simultaneousCapacity: 1, acquiredAt: order.reception.receivedAt, lastMaintenance: order.reception.receivedAt, nextMaintenance: "2026-12-10", notes: `Origen ${order.number}. ${order.observations || ""}`, status: order.certificate?.status === "Aprobado" ? "Operativo" : "Pendiente de documentacion" });
     }
   }
 
@@ -863,6 +1008,8 @@
     if (action === "logout") return logout();
     if (action === "restore-demo") return restoreDemo();
     if (action === "open-reservation") return reservationForm();
+    if (action === "open-plan") return planForm(id ? byId("plans", id) : {});
+    if (action === "open-product") return productForm(id ? byId("products", id) : {});
     if (action === "open-branch") return branchForm(id ? byId("branches", id) : {});
     if (action === "open-client") return clientForm(id ? byId("clients", id) : {});
     if (action === "open-employee") return employeeForm(id ? byId("employees", id) : {});
@@ -890,6 +1037,18 @@
     if (action === "machine-status") return changeMachineStatus(id, el.dataset.next);
     if (action === "reservation-status" || action === "cancel-reservation") return updateReservationStatus(action, id, el.dataset.next);
     if (action === "membership-status") return updateMembershipStatus(id, el.dataset.next);
+    if (action === "plan-status") return togglePlan(id);
+    if (action === "delete-plan") return deletePlan(id);
+    if (action === "cart-add") return addToCart(id);
+    if (action === "cart-checkout") return checkoutCart(el.dataset.client);
+    if (action === "invoice-view") return invoiceDetail(id);
+    if (action === "invoice-download") return downloadInvoice(id);
+    if (action === "invoice-send") return sendInvoice(id);
+    if (action === "class-participants") return classParticipants(id);
+    if (action === "class-start") return classStatus(id, "En curso");
+    if (action === "class-finish") return classStatus(id, "Completada");
+    if (action === "class-history") return classHistory(id);
+    if (action === "service-request") return requestService(id);
     if (action === "maintenance-detail") return maintenanceDetail(id);
     if (action === "start-maintenance") return startMaintenance(id);
     if (action === "finish-maintenance") return finishMaintenanceForm(byId("maintenance", id));
@@ -901,6 +1060,106 @@
     if (action === "print-report") return window.print();
     if (action === "export-report") return exportCsv(app.data.payments, "renovatio-gym-reporte.csv");
     if (action === "download-report") return downloadReport();
+  }
+
+  function togglePlan(id) {
+    if (!isAdmin()) return toast("Solo administracion puede cambiar planes.", "error");
+    const plan = byId("plans", id);
+    plan.status = plan.status === "Activa" ? "Inactiva" : "Activa";
+    save(); render(); toast("Estado de membresia actualizado.");
+  }
+
+  function deletePlan(id) {
+    if (!isAdmin()) return toast("Solo administracion puede eliminar planes.", "error");
+    const related = app.data.memberships.some((membership) => membership.planId === id);
+    const plan = byId("plans", id);
+    if (related) {
+      plan.status = "Inactiva";
+      save(); render(); return toast("El plan tiene clientes relacionados; se desactivo en lugar de eliminarlo.");
+    }
+    app.data.plans = app.data.plans.filter((item) => item.id !== id);
+    save(); render(); toast("Membresia eliminada.");
+  }
+
+  function addToCart(productId) {
+    const product = byId("products", productId);
+    if (!product || product.status !== "Activo" || Number(product.stock) <= 0) return toast("Producto no disponible.", "error");
+    const clientId = app.user.clientId || app.data.clients[0]?.id;
+    const existing = app.data.carts.find((item) => item.clientId === clientId && item.productId === productId);
+    if (existing) existing.quantity += 1;
+    else app.data.carts.push({ id: uid("cart"), clientId, productId, quantity: 1, price: Number(product.price) });
+    save(); render(); toast("Producto agregado al carrito.");
+  }
+
+  function checkoutCart(clientId) {
+    const cart = app.data.carts.filter((item) => item.clientId === clientId);
+    if (!cart.length) return toast("El carrito esta vacio.", "error");
+    const client = byId("clients", clientId);
+    const discount = discountForClient(clientId);
+    const subtotal = cart.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
+    const total = Math.round(subtotal * (1 - discount / 100));
+    cart.forEach((item) => {
+      const product = byId("products", item.productId);
+      if (product) product.stock = Math.max(0, Number(product.stock) - Number(item.quantity));
+    });
+    const payment = { id: uid("pay"), clientId, branchId: client.branchId, itemType: "Producto", description: `${cart.length} item(s) de tienda`, amount: total, date: today, method: "Tarjeta", receipt: `FAC-${Math.floor(Math.random() * 9000) + 1000}`, status: "Pagado" };
+    payment.invoice = createInvoice(payment, client, "Emitida");
+    app.data.payments.unshift(payment);
+    app.data.carts = app.data.carts.filter((item) => item.clientId !== clientId);
+    save(); render(); toast("Compra confirmada, pago registrado y factura solicitada.");
+  }
+
+  function invoiceDetail(paymentId) {
+    const payment = byId("payments", paymentId);
+    showModal("Factura electronica simulada", `<dl class="detail-grid"><div><dt>Factura</dt><dd>${esc(payment.invoice?.series)}-${esc(payment.invoice?.number)}</dd></div><div><dt>Estado</dt><dd>${badge(payment.invoice?.status || "Pendiente de emision")}</dd></div><div><dt>Fecha</dt><dd>${esc(payment.invoice?.date)}</dd></div><div><dt>Correo</dt><dd>${esc(payment.invoice?.email)}</dd></div><div><dt>Envio</dt><dd>${payment.invoice?.sent ? "Exitoso" : "Pendiente o fallido"}</dd></div><div><dt>Intentos</dt><dd>${payment.invoice?.attempts || 0}</dd></div><div><dt>Monto</dt><dd>${money(payment.amount)}</dd></div><div><dt>Pago</dt><dd>${badge(payment.status)}</dd></div></dl><p class="mt-4 text-sm text-slate-600">Integracion externa simulada. Si falla, el pago permanece y la factura queda pendiente para reintento.</p>`);
+  }
+
+  function downloadInvoice(paymentId) {
+    const payment = byId("payments", paymentId);
+    const blob = new Blob([`Factura ${payment.invoice?.series}-${payment.invoice?.number}\nCliente: ${clientName(payment.clientId)}\nMonto: ${money(payment.amount)}\nEstado: ${payment.invoice?.status}`], { type: "text/plain;charset=utf-8" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `factura-${payment.invoice?.series}-${payment.invoice?.number}.txt`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    toast("Factura descargada.");
+  }
+
+  function sendInvoice(paymentId) {
+    const payment = byId("payments", paymentId);
+    payment.invoice ||= createInvoice(payment, byId("clients", payment.clientId));
+    payment.invoice.attempts = Number(payment.invoice.attempts || 0) + 1;
+    payment.invoice.sent = true;
+    payment.invoice.status = "Enviada";
+    save(); render(); toast(`Factura enviada a ${payment.invoice.email}.`);
+  }
+
+  function classParticipants(scheduleId) {
+    const list = app.data.reservations.filter((reservation) => reservation.scheduleId === scheduleId);
+    showModal("Participantes", simpleTable(["Cliente", "Estado", "Asistencia", "Acciones"], list.map((reservation) => [clientName(reservation.clientId), reservation.status, reservation.attendance || "Pendiente", `${button("Asistencia", "reservation-status", "success", `data-id="${reservation.id}" data-next="Completada"`)}${button("Ausencia", "reservation-status", "warning", `data-id="${reservation.id}" data-next="No asistio"`)}`])));
+  }
+
+  function classStatus(scheduleId, next) {
+    const schedule = byId("schedules", scheduleId);
+    schedule.status = next;
+    if (next === "Completada") {
+      app.data.reservations.filter((reservation) => reservation.scheduleId === scheduleId && ["Confirmada", "En curso"].includes(reservation.status)).forEach((reservation) => {
+        reservation.status = "Completada";
+        reservation.attendance = "Presente";
+        reservation.history.push({ status: "Completada", at: new Date().toLocaleString("sv-SE").slice(0, 16) });
+      });
+    }
+    save(); render(); toast("Clase actualizada.");
+  }
+
+  function classHistory(scheduleId) {
+    const rows = app.data.reservations.filter((reservation) => reservation.scheduleId === scheduleId).flatMap((reservation) => reservation.history.map((item) => [clientName(reservation.clientId), item.status, item.at]));
+    showModal("Historial de clase", simpleTable(["Cliente", "Estado", "Fecha"], rows));
+  }
+
+  function requestService(serviceId) {
+    const service = byId("services", serviceId);
+    toast(`Solicitud de cita registrada para ${service.name}.`);
   }
 
   function logout() {
@@ -955,7 +1214,8 @@
   }
 
   function simpleTable(headers, rows) {
-    return `<div class="table-wrap mt-3"><table><thead><tr>${headers.map((head) => `<th>${esc(head)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${esc(cell)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${headers.length}" class="empty">Sin registros.</td></tr>`}</tbody></table></div>`;
+    const cellHtml = (cell) => String(cell ?? "").trim().startsWith("<") ? String(cell) : esc(cell);
+    return `<div class="table-wrap mt-3"><table><thead><tr>${headers.map((head) => `<th>${esc(head)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${cellHtml(cell)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${headers.length}" class="empty">Sin registros.</td></tr>`}</tbody></table></div>`;
   }
 
   function setClientStatus(id, next) {
@@ -981,7 +1241,8 @@
   function purchaseOrderDetail(id) {
     const order = byId("purchaseOrders", id);
     const rows = (order.items || []).map((item) => [item.name, item.quantity, money(item.unitPrice), money(item.quantity * item.unitPrice)]);
-    showModal("Detalle de orden de compra", `<dl class="detail-grid"><div><dt>Numero</dt><dd>${esc(order.number)}</dd></div><div><dt>Fecha</dt><dd>${order.date}</dd></div><div><dt>Sucursal</dt><dd>${branchName(order.branchId)}</dd></div><div><dt>Solicitante</dt><dd>${employeeName(order.requesterId)}</dd></div><div><dt>Administrador sucursal</dt><dd>${employeeName(order.branchAdminId || branchAdminFor(order.branchId)?.id)}<small>${order.approvals?.branchAdmin ? `Visto bueno ${order.approvals.branchAdmin.at}` : "Pendiente"}</small></dd></div><div><dt>Gerente general</dt><dd>${employeeName(order.generalManagerId || generalManager()?.id)}<small>${order.approvals?.generalManager ? `Visto bueno ${order.approvals.generalManager.at}` : "Pendiente"}</small></dd></div><div><dt>Proveedor</dt><dd>${esc(order.supplier)}</dd></div><div><dt>Tipo</dt><dd>${esc(order.purchaseType)}</dd></div><div><dt>Entrega esperada</dt><dd>${order.expectedDelivery}</dd></div><div><dt>Estado</dt><dd>${badge(order.status)}</dd></div><div><dt>Subtotal</dt><dd>${money(orderSubtotal(order))}</dd></div><div><dt>Impuestos</dt><dd>${money(orderTax(order))}</dd></div><div><dt>Total</dt><dd>${money(orderTotal(order))}</dd></div><div><dt>Motivo</dt><dd>${esc(order.reason)}</dd></div></dl><h3 class="mt-5 font-black">Articulos</h3>${simpleTable(["Articulo", "Cantidad", "Precio unitario", "Subtotal"], rows)}<h3 class="mt-5 font-black">Observaciones</h3><p class="mt-2 text-sm text-slate-600">${esc(order.observations || "Sin observaciones.")}</p>${order.reception ? `<h3 class="mt-5 font-black">Recepcion</h3><dl class="detail-grid mt-3"><div><dt>Fecha</dt><dd>${order.reception.receivedAt}</dd></div><div><dt>Entrega</dt><dd>${order.reception.complete}</dd></div><div><dt>Inventario</dt><dd>${order.reception.inventory ? "Si" : "No"}</dd></div><div><dt>Observaciones</dt><dd>${esc(order.reception.observations)}</dd></div></dl>` : ""}`);
+    const top = (order.quotes || []).sort((a, b) => (b.quality - a.quality) || (a.price - b.price)).slice(0, 3).map((quote) => [quote.supplier, money(quote.price), `${quote.quality}/100`]);
+    showModal("Detalle de orden de compra", `<dl class="detail-grid"><div><dt>Numero</dt><dd>${esc(order.number)}</dd></div><div><dt>Fecha</dt><dd>${order.date}</dd></div><div><dt>Sucursal</dt><dd>${branchName(order.branchId)}</dd></div><div><dt>Solicitante</dt><dd>${employeeName(order.requesterId)}</dd></div><div><dt>Proveedor</dt><dd>${esc(order.supplier)}</dd></div><div><dt>Tipo</dt><dd>${esc(order.purchaseType)}</dd></div><div><dt>Garantia</dt><dd>${esc(order.warranty || "Pendiente")}</dd></div><div><dt>Tiempo entrega</dt><dd>${esc(order.deliveryTime || order.expectedDelivery)}</dd></div><div><dt>Certificado</dt><dd>${badge(order.certificate?.status || "Pendiente")}<small>${esc(order.certificate?.fileName || "Sin archivo")}</small></dd></div><div><dt>Responsable</dt><dd>${esc(order.certificate?.reviewedBy || "Pendiente")}<small>${esc(order.certificate?.reviewedAt || "")}</small></dd></div><div><dt>Estado</dt><dd>${badge(order.status)}</dd></div><div><dt>Total</dt><dd>${money(orderTotal(order))}</dd></div></dl><h3 class="mt-5 font-black">Top 3 proveedores</h3>${simpleTable(["Proveedor", "Precio", "Calidad"], top)}<h3 class="mt-5 font-black">Articulos</h3>${simpleTable(["Articulo", "Cantidad", "Precio unitario", "Subtotal"], rows)}<h3 class="mt-5 font-black">Observaciones</h3><p class="mt-2 text-sm text-slate-600">${esc(order.observations || "Sin observaciones.")}</p>${order.reception ? `<h3 class="mt-5 font-black">Recepcion</h3><dl class="detail-grid mt-3"><div><dt>Fecha</dt><dd>${order.reception.receivedAt}</dd></div><div><dt>Entrega</dt><dd>${order.reception.complete}</dd></div><div><dt>Inventario</dt><dd>${order.reception.inventory ? "Si" : "No"}</dd></div><div><dt>Observaciones</dt><dd>${esc(order.reception.observations)}</dd></div></dl>` : ""}`);
   }
 
   function approvePurchaseOrder(id, type) {
@@ -1021,7 +1282,7 @@
 
   function machineDetail(id) {
     const machine = byId("machines", id);
-    showModal("Detalle de maquina", `<dl class="detail-grid"><div><dt>Codigo</dt><dd>${esc(machine.code)}</dd></div><div><dt>Nombre</dt><dd>${esc(machine.name)}</dd></div><div><dt>Sucursal</dt><dd>${branchName(branchOfMachine(machine))}</dd></div><div><dt>Area</dt><dd>${areaName(machine.areaId)}</dd></div><div><dt>Marca</dt><dd>${esc(machine.brand)}</dd></div><div><dt>Modelo</dt><dd>${esc(machine.model)}</dd></div><div><dt>Capacidad</dt><dd>${machine.simultaneousCapacity}</dd></div><div><dt>Estado</dt><dd>${badge(machine.status)}</dd></div></dl>`);
+    showModal("Detalle de equipo", `<dl class="detail-grid"><div><dt>Codigo</dt><dd>${esc(machine.code)}</dd></div><div><dt>Nombre</dt><dd>${esc(machine.name)}</dd></div><div><dt>Sucursal</dt><dd>${branchName(branchOfMachine(machine))}</dd></div><div><dt>Area</dt><dd>${areaName(machine.areaId)}</dd></div><div><dt>Marca</dt><dd>${esc(machine.brand)}</dd></div><div><dt>Modelo</dt><dd>${esc(machine.model)}</dd></div><div><dt>Capacidad operativa</dt><dd>${machine.simultaneousCapacity}</dd></div><div><dt>Estado</dt><dd>${badge(machine.status)}</dd></div><div><dt>Certificado</dt><dd>${badge(machine.certificate?.status || "Pendiente")}<small>${esc(machine.certificate?.fileName || "Sin archivo")}</small></dd></div><div><dt>Responsable</dt><dd>${esc(machine.certificate?.reviewedBy || "Pendiente")}<small>${esc(machine.certificate?.reviewedAt || "")}</small></dd></div></dl>`);
   }
 
   function changeMachineStatus(id, next) {
@@ -1030,18 +1291,10 @@
     const allowed = window.GymRules.machineFlow[machine.status] || [];
     if (!allowed.includes(next)) return toast("Transicion de maquina no permitida.", "error");
     machine.status = next;
-    if (next === "En mantenimiento") rejectFutureMachineReservations(machine.id);
     save(); render(); toast("Estado de maquina actualizado.");
   }
 
-  function rejectFutureMachineReservations(machineId) {
-    app.data.reservations.forEach((reservation) => {
-      if (reservation.machineId === machineId && ["Pendiente", "Confirmada"].includes(reservation.status)) {
-        reservation.status = "Rechazada";
-        reservation.history.push({ status: "Rechazada", at: new Date().toLocaleString("sv-SE").slice(0, 16) });
-      }
-    });
-  }
+  function rejectFutureMachineReservations() {}
 
   function updateReservationStatus(action, id, next) {
     const result = action === "cancel-reservation" ? window.GymReservations.cancel(app.data, id, app.user) : window.GymReservations.changeStatus(app.data, id, next, app.user);
@@ -1070,7 +1323,6 @@
     item.status = "En proceso";
     const machine = byId("machines", item.machineId);
     machine.status = "En mantenimiento";
-    rejectFutureMachineReservations(machine.id);
     save(); render(); toast("Mantenimiento iniciado. Maquina bloqueada.");
   }
 
@@ -1113,13 +1365,14 @@
       staffEmployeeSelect: ["staffEmployee", null],
       branchSearch: ["branchSearch", null], branchStatusFilter: ["branchStatus", null],
       inventoryBranch: ["inventoryBranch", null], inventorySearch: ["inventorySearch", null], inventoryType: ["inventoryType", null], inventoryState: ["inventoryState", null],
-      dashboardBranch: ["dashboardBranch", null]
+      dashboardBranch: ["dashboardBranch", null],
+      storeBranch: ["storeBranch", null], storeCategory: ["storeCategory", null]
     };
     if (simpleMap[id]) {
       app.filters[simpleMap[id][0]] = value;
       return render();
     }
-    if (["reservationClient", "reservationSchedule", "reservationMachine"].includes(id)) return updateReservationPreview();
+    if (["reservationClient", "reservationSchedule"].includes(id)) return updateReservationPreview();
     if (id === "poBranchInput" && $("#poBranchAdminInput")) {
       $("#poBranchAdminInput").innerHTML = options(adminOptionsForBranch(value), branchAdminFor(value)?.id);
       return;
@@ -1173,6 +1426,60 @@
       app.charts.push(new Chart($("#genericStateChart"), { type: "bar", data: { labels, datasets: [{ label: "Registros", data: labels.map((label) => JSON.stringify(app.data).split(label).length - 1), backgroundColor: "#14b8a6", borderRadius: 6 }] }, options: common }));
     }
     if ($("#genericBranchChart")) app.charts.push(new Chart($("#genericBranchChart"), { type: "bar", data: { labels: app.data.branches.map((b) => b.name), datasets: [{ label: "Clientes", data: app.data.branches.map((b) => app.data.clients.filter((c) => c.branchId === b.id).length), backgroundColor: "#f97316", borderRadius: 6 }] }, options: common }));
+  }
+
+  function normalizeData(data) {
+    const seed = window.GYM_SEED || {};
+    const clone = (value) => window.GymStorage?.clone ? window.GymStorage.clone(value) : JSON.parse(JSON.stringify(value));
+    ["users", "branches", "plans", "clients", "trainers", "employees", "staffMetrics", "areas", "machines", "memberships", "schedules", "reservations", "maintenance", "payments", "purchaseOrders", "products", "partners", "services", "carts", "dailyReports", "audit"].forEach((key) => {
+      if (!Array.isArray(data[key])) data[key] = clone(seed[key] || []);
+    });
+    data.plans = data.plans.filter((plan) => ["p-basica", "p-haute"].includes(plan.id));
+    if (data.plans.length !== 2) data.plans = clone(seed.plans || []);
+    const planIds = data.plans.map((plan) => plan.id);
+    data.memberships = data.memberships.filter((membership) => planIds.includes(membership.planId));
+    data.clients.forEach((client, index) => {
+      client.code ||= `CLI-${String(index + 1).padStart(3, "0")}`;
+      client.joinedAt ||= today;
+      client.observations ||= "Sin observaciones registradas.";
+    });
+    data.branches.forEach((branch, index) => {
+      branch.code ||= index === 0 ? "Z10" : `SUC-${index + 1}`;
+      branch.phone ||= "2400-0000";
+      branch.email ||= `${branch.code.toLowerCase()}@gym.test`;
+      branch.manager ||= "Encargado pendiente";
+      branch.weekdayHours ||= "Lunes-viernes 04:00-22:00";
+      branch.weekendHours ||= "Sabados y domingos 06:00-14:00";
+      branch.amenities ||= data.areas.filter((area) => area.branchId === branch.id).map((area) => area.name);
+      branch.hasPool ??= branch.amenities.some((name) => ["piscina", "natacion"].includes(String(name).toLowerCase()));
+      branch.hasBoxingRing ??= branch.amenities.some((name) => String(name).toLowerCase() === "boxeo");
+      if (branch.status === "Disponible") branch.status = "Activa";
+    });
+    data.machines.forEach((machine) => {
+      if (["Disponible"].includes(machine.status) || String(machine.status).startsWith("Reserva") || String(machine.status).startsWith("En u")) machine.status = "Operativo";
+      machine.certificate ||= { status: "Pendiente", fileName: "", reviewedBy: "", reviewedAt: "", observations: "" };
+    });
+    data.reservations.forEach((reservation) => {
+      delete reservation.machineId;
+      reservation.attendance ||= reservation.status === "Completada" ? "Presente" : reservation.status === "No asistio" ? "Ausente" : "Pendiente";
+      reservation.history ||= [{ status: reservation.status || "Pendiente", at: reservation.createdAt || today }];
+    });
+    data.purchaseOrders.forEach((order) => {
+      order.taxRate ??= 0.12;
+      order.items ||= [];
+      order.approvals ||= { branchAdmin: null, generalManager: null };
+      order.quotes ||= [];
+      order.warranty ||= "Pendiente";
+      order.deliveryTime ||= order.expectedDelivery || "Pendiente";
+      order.certificate ||= { status: order.purchaseType === "Nueva maquina" ? "Pendiente" : "No aplica", fileName: "", reviewedBy: "", reviewedAt: "", observations: "" };
+    });
+    data.payments.forEach((payment) => {
+      const client = window.GymRules.byId(data, "clients", payment.clientId);
+      payment.branchId ||= client?.branchId || data.branches[0]?.id;
+      payment.itemType ||= payment.planId ? "Membresia" : "Producto";
+      payment.invoice ||= createInvoice(payment, client, "Pendiente de emision");
+    });
+    return data;
   }
 
   function hydrateLogin() {
