@@ -89,10 +89,12 @@
     if (!area || !branch) return { total: 0, reserved: 0, inUse: 0, available: 0, percent: 100, state: "Cerrado", reason: "Area o sucursal invalida" };
     if (inactiveBranchStates.includes(branch.status)) return { total: 0, reserved: 0, inUse: 0, available: 0, percent: 100, state: "Cerrado", reason: "Sucursal no activa" };
     if (schedule.status === "Cerrado" || unavailableAreaStates.includes(area.status)) return { total: 0, reserved: 0, inUse: 0, available: 0, percent: 100, state: "Cerrado", reason: "Area cerrada o en mantenimiento" };
-    if (area.name === "Boxeo" && !branch.hasBoxingRing) return { total: 0, reserved: 0, inUse: 0, available: 0, percent: 100, state: "Cerrado", reason: "La sucursal no tiene ring de boxeo" };
-
+    const areaMachines = data.machines.filter((item) => item.areaId === area.id);
     const operational = machineOperationalCapacity(data, area.id);
-    const total = Math.min(Number(area.capacity), Number(schedule.capacity), operational || Number(area.capacity));
+    if (area.name === "Boxeo" && !branch.hasBoxingRing) return { total: 0, reserved: 0, inUse: 0, available: 0, percent: 100, state: "Cerrado", reason: "La sucursal no tiene ring de boxeo" };
+    if (area.name === "Boxeo" && operational <= 0) return { total: 0, reserved: 0, inUse: 0, available: 0, percent: 100, state: "Cerrado", reason: "El ring de boxeo no esta operativo" };
+
+    const total = Math.min(Number(area.capacity), Number(schedule.capacity), areaMachines.length ? operational : Number(area.capacity));
     const reserved = confirmedReservations(data, scheduleId);
     const inUse = currentPeople(data, area.id);
     const available = Math.max(0, total - reserved - inUse);
@@ -118,6 +120,7 @@
     if (!area || unavailableAreaStates.includes(area.status) || schedule.status === "Cerrado") return { ok: false, reason: "El area esta cerrada o en mantenimiento" };
     if (area.name === "Boxeo" && !branch.hasBoxingRing) return { ok: false, reason: "Boxeo solo se ofrece en sucursales con ring" };
     if (area.name === "Boxeo" && plan.id === "p-basica") return { ok: false, reason: "La membresia Basica no incluye boxeo" };
+    if (area.name === "Boxeo" && machineOperationalCapacity(data, area.id) <= 0) return { ok: false, reason: "El ring de boxeo esta fuera de servicio" };
 
     const sameSlot = data.reservations.some((reservation) => reservation.clientId === client.id && reservation.scheduleId === schedule.id && activeReservationStates.includes(reservation.status));
     if (sameSlot) return { ok: false, reason: "Ya existe una reserva para ese cliente, fecha y horario" };

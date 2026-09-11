@@ -6,7 +6,7 @@ window.GYM_SEED = {
     { id: "u-client", name: "Ana Lopez", email: "cliente@gym.test", role: "client", clientId: "c1", status: "Activo" }
   ],
   branches: [
-    { id: "b1", code: "Z10", name: "Zona 10 Performance", address: "Avenida Reforma 10-45", phone: "2410-1000", email: "zona10@gym.test", manager: "Valeria Rivas", opens: "04:00", closes: "22:00", weekdayHours: "Lunes-viernes 04:00-22:00", weekendHours: "Sabados y domingos 06:00-14:00", expectedAttendance: "75-100 personas", amenities: ["Piscina", "Boxeo", "Cardio", "Pesas", "Cafeteria"], hasPool: true, hasBoxingRing: true, capacity: 100, status: "Activa" },
+    { id: "b1", code: "PREM", name: "Sucursal Premium", address: "Avenida Reforma 10-45", phone: "2410-1000", email: "premium@gym.test", manager: "Valeria Rivas", opens: "04:00", closes: "22:00", weekdayHours: "Lunes-viernes 04:00-22:00", weekendHours: "Sabados y domingos 06:00-14:00", expectedAttendance: "75-100 personas", amenities: ["Piscina", "Boxeo", "Cardio", "Pesas", "Cafeteria"], hasPool: true, hasBoxingRing: true, capacity: 100, status: "Activa" },
     { id: "b2", code: "MJD", name: "Majadas Athletic", address: "Calzada Roosevelt 26-70", phone: "2410-2000", email: "majadas@gym.test", manager: "Mario Escobar", opens: "04:00", closes: "22:00", weekdayHours: "Lunes-viernes 04:00-22:00", weekendHours: "Sabados y domingos 06:00-14:00", expectedAttendance: "75-100 personas", amenities: ["Spinning", "Entrenamiento funcional", "Cafeteria"], hasPool: false, hasBoxingRing: false, capacity: 100, status: "Activa" }
   ],
   plans: [
@@ -45,14 +45,14 @@ window.GYM_SEED = {
     { id: "a-cardio", name: "Cardio", description: "Caminadoras, elipticas y bicicletas como acceso general.", branchId: "b1", capacity: 20, schedule: "05:00-22:00", status: "Disponible" },
     { id: "a-pesas", name: "Pesas", description: "Peso libre y maquinas de fuerza.", branchId: "b1", capacity: 18, schedule: "05:00-22:00", status: "Disponible" },
     { id: "a-piscina", name: "Natacion", description: "Piscina; referencia inicial de clase de una hora.", branchId: "b1", capacity: 10, schedule: "04:00-22:00", status: "Disponible" },
-    { id: "a-boxeo", name: "Boxeo", description: "Area con ring; solo sucursales con ring pueden ofertar boxeo.", branchId: "b1", capacity: 15, schedule: "06:00-21:00", status: "Disponible" },
+    { id: "a-boxeo", name: "Boxeo", type: "Area deportiva", resourceName: "Ring de boxeo", allowsClasses: true, allowsReservations: true, description: "Area deportiva con ring; solo sucursales con amenidad de boxeo pueden ofertarla.", branchId: "b1", capacity: 15, schedule: "06:00-19:00", status: "Disponible" },
     { id: "a-spinning", name: "Spinning", description: "Salon con bicicletas indoor.", branchId: "b2", capacity: 16, schedule: "06:00-21:00", status: "Capacidad limitada" },
     { id: "a-funcional", name: "Entrenamiento funcional", description: "TRX, bandas y estaciones.", branchId: "b2", capacity: 12, schedule: "06:00-21:00", status: "Disponible" }
   ],
   machines: [
     { id: "ma1", code: "CAR-001", name: "Caminadora Pro X", type: "Cardio", areaId: "a-cardio", brand: "Nordic", model: "T9", simultaneousCapacity: 1, acquiredAt: "2024-02-10", lastMaintenance: "2026-08-10", nextMaintenance: "2026-10-10", certificate: { status: "Aprobado", fileName: "cert-car-001.pdf", reviewedBy: "Valeria Rivas", reviewedAt: "2026-08-12", observations: "Certificado vigente." }, notes: "Banda nueva", status: "Operativo" },
     { id: "ma2", code: "PES-001", name: "Prensa 45", type: "Fuerza", areaId: "a-pesas", brand: "Hammer", model: "L45", simultaneousCapacity: 2, acquiredAt: "2021-03-16", lastMaintenance: "2026-08-20", nextMaintenance: "2026-11-20", certificate: { status: "Aprobado", fileName: "cert-pes-001.pdf", reviewedBy: "Valeria Rivas", reviewedAt: "2026-08-21", observations: "Conforme." }, notes: "", status: "Operativo" },
-    { id: "ma3", code: "BOX-001", name: "Ring modular", type: "Boxeo", areaId: "a-boxeo", brand: "CombatFit", model: "R15", simultaneousCapacity: 15, acquiredAt: "2025-05-10", lastMaintenance: "2026-08-01", nextMaintenance: "2026-10-01", certificate: { status: "Aprobado", fileName: "cert-box-001.pdf", reviewedBy: "Valeria Rivas", reviewedAt: "2026-08-01", observations: "Apto para clases." }, notes: "", status: "Operativo" },
+    { id: "ma3", code: "BOX-001", name: "Ring de boxeo", type: "Boxeo", areaId: "a-boxeo", brand: "CombatFit", model: "R15", simultaneousCapacity: 15, acquiredAt: "2025-05-10", lastMaintenance: "2026-08-01", nextMaintenance: "2026-10-01", certificate: { status: "Aprobado", fileName: "cert-ring-boxeo.pdf", reviewedBy: "Valeria Rivas", reviewedAt: "2026-08-01", observations: "Certificado de calidad vigente; apto para clases y reservas." }, notes: "Recurso principal del area de Boxeo.", status: "Operativo" },
     { id: "ma4", code: "SPI-001", name: "Bike Sprint A", type: "Spinning", areaId: "a-spinning", brand: "Keiser", model: "M3", simultaneousCapacity: 1, acquiredAt: "2024-04-22", lastMaintenance: "2026-07-30", nextMaintenance: "2026-09-30", certificate: { status: "Cargado", fileName: "cert-spi-001.pdf", reviewedBy: "Mario Escobar", reviewedAt: "2026-08-03", observations: "Pendiente de revision final." }, notes: "", status: "En mantenimiento" }
   ],
   memberships: [
@@ -67,6 +67,7 @@ window.GYM_SEED = {
     { id: "s2", type: "Pesas", date: "2026-09-10", start: "07:00", end: "08:00", areaId: "a-pesas", branchId: "b1", trainerId: "t2", capacity: 12, status: "Disponible" },
     { id: "s3", type: "Natacion", date: "2026-09-10", start: "08:00", end: "09:00", areaId: "a-piscina", branchId: "b1", trainerId: "t1", capacity: 10, durationMinutes: 60, status: "Disponible" },
     { id: "s4", type: "Boxeo", date: "2026-09-10", start: "18:00", end: "19:00", areaId: "a-boxeo", branchId: "b1", trainerId: "t4", capacity: 15, durationMinutes: 60, status: "Disponible" },
+    { id: "s8", type: "Boxeo", date: "2026-09-12", start: "07:00", end: "08:00", areaId: "a-boxeo", branchId: "b1", trainerId: "t4", capacity: 15, durationMinutes: 60, status: "Disponible" },
     { id: "s5", type: "Spinning", date: "2026-09-11", start: "18:00", end: "19:00", areaId: "a-spinning", branchId: "b2", trainerId: "t3", capacity: 12, status: "Disponible" },
     { id: "s6", type: "Entrenamiento funcional", date: "2026-09-11", start: "06:00", end: "07:00", areaId: "a-funcional", branchId: "b2", trainerId: "t1", capacity: 10, status: "Disponible" },
     { id: "s7", type: "Cardio", date: "2026-09-11", start: "17:00", end: "18:00", areaId: "a-cardio", branchId: "b1", trainerId: "t2", capacity: 14, status: "Disponible" }

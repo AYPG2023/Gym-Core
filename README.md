@@ -35,6 +35,8 @@ Cuentas:
 - Servicios tercerizados con nutricionista como partner y agenda marcada como propuesta pendiente de validacion.
 - Panel del coach limitado a sus clases, participantes, asistencia, historial y metricas.
 - Reportes financieros restringidos por rol y reporte diario por sucursal.
+- Area fisica de Boxeo en Sucursal Premium con ring certificado, capacidad y horario configurables.
+- Clases demo de Boxeo con coach, cupo, inscritos, disponibilidad y reporte especifico.
 - Sucursales con amenidades administradas como areas operativas.
 - Ordenes de compra con visto bueno del administrador de sucursal y gerente general antes de aprobar.
 - Recepcion de equipo con cantidades recibidas, entrega completa/parcial e incorporacion opcional al inventario antes de registrar maquina.

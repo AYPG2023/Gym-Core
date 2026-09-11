@@ -436,11 +436,14 @@
 
   function memberships() {
     const clientOnly = app.user.role === "client";
-    const membershipList = clientOnly ? app.data.memberships.filter((membership) => membership.clientId === app.user.clientId) : app.data.memberships;
+    const client = clientOnly ? byId("clients", app.user.clientId) : null;
+    const currentMembership = clientOnly ? (byId("memberships", client?.membershipId) || window.GymRules.membershipFor(app.data, app.user.clientId)) : null;
+    const membershipList = clientOnly ? (currentMembership ? [currentMembership] : []) : app.data.memberships;
+    const planList = clientOnly ? app.data.plans.filter((plan) => plan.id === currentMembership?.planId) : app.data.plans;
     const actions = isAdmin() ? `${button(`${icon("plus")} Nueva membresia`, "open-plan", "primary")}${button(`${icon("plus")} Registrar pago`, "open-payment", "secondary")}` : "";
-    return page("Membresias y planes", "Planes, vigencias, permisos de areas y estados de membresia.", actions) +
+    return page(clientOnly ? "Mi membresia" : "Membresias y planes", clientOnly ? "Plan vigente, beneficios y vencimiento de tu membresia actual." : "Planes, vigencias, permisos de areas y estados de membresia.", actions) +
       `<section class="grid gap-5 xl:grid-cols-[.9fr_1.4fr]">
-        <article class="panel p-5"><div class="section-head"><div><h2>Planes disponibles</h2><p>Beneficios, limites y pendientes de confirmacion.</p></div></div><div class="mt-4 space-y-3">${app.data.plans.map((plan) => { const related = app.data.memberships.filter((m) => m.planId === plan.id).length; const benefits = (plan.benefits || []).map((item) => `${item.name}: ${item.limit}${item.unit || ""} / ${item.period}`).join(", "); const pending = (plan.pendingBenefits || []).length ? `<small>Pendientes de confirmacion: ${esc(plan.pendingBenefits.join(", "))}</small>` : ""; const planActions = isAdmin() ? `<div class="row-actions">${button(icon("pencil"), "open-plan", "icon-only", `data-id="${plan.id}" title="Editar"`)}${button(plan.status === "Activa" ? "Desactivar" : "Activar", "plan-status", plan.status === "Activa" ? "warning" : "success", `data-id="${plan.id}"`)}${button("Eliminar", "delete-plan", "danger", `data-id="${plan.id}"`)}</div>` : ""; return `<div class="plan-card"><div><b>${esc(plan.name)}</b><small>${money(plan.price)} / ${plan.durationDays} dias / ${plan.reservationLimit} reservas</small>${pending}</div>${badge(plan.status)}<p>${esc(benefits)}</p><p>Areas: ${plan.areas.map(areaName).join(", ")}. Clientes relacionados: ${related}</p>${planActions}</div>`; }).join("")}</div></article>
+        <article class="panel p-5"><div class="section-head"><div><h2>${clientOnly ? "Plan actual" : "Planes disponibles"}</h2><p>${clientOnly ? "Beneficios de tu membresia vigente." : "Beneficios, limites y pendientes de confirmacion."}</p></div></div><div class="mt-4 space-y-3">${planList.map((plan) => { const related = app.data.memberships.filter((m) => m.planId === plan.id).length; const benefits = (plan.benefits || []).map((item) => `${item.name}: ${item.limit}${item.unit || ""} / ${item.period}`).join(", "); const pending = (plan.pendingBenefits || []).length ? `<small>Pendientes de confirmacion: ${esc(plan.pendingBenefits.join(", "))}</small>` : ""; const planActions = isAdmin() ? `<div class="row-actions">${button(icon("pencil"), "open-plan", "icon-only", `data-id="${plan.id}" title="Editar"`)}${button(plan.status === "Activa" ? "Desactivar" : "Activar", "plan-status", plan.status === "Activa" ? "warning" : "success", `data-id="${plan.id}"`)}${button("Eliminar", "delete-plan", "danger", `data-id="${plan.id}"`)}</div>` : ""; return `<div class="plan-card"><div><b>${esc(plan.name)}</b><small>${money(plan.price)} / ${plan.durationDays} dias / ${plan.reservationLimit} reservas</small>${pending}</div>${badge(plan.status)}<p>${esc(benefits)}</p><p>Areas: ${plan.areas.map(areaName).join(", ")}${clientOnly ? "" : `. Clientes relacionados: ${related}`}</p>${planActions}</div>`; }).join("") || `<p class="empty">Sin plan vigente.</p>`}</div></article>
         <article class="panel overflow-hidden"><div class="section-head p-5"><div><h2>${clientOnly ? "Mi membresia" : "Membresias asignadas"}</h2><p>${clientOnly ? "Vigencia y estado de tu plan actual." : "Estados y fechas de vencimiento."}</p></div></div><div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Plan</th><th>Vigencia</th><th>Estado</th>${isAdmin() ? "<th>Acciones</th>" : ""}</tr></thead><tbody>${membershipList.map((membership) => `<tr><td>${clientName(membership.clientId)}</td><td>${planName(membership.planId)}</td><td>${membership.startDate} al ${membership.endDate}</td><td>${badge(membership.status)}</td>${isAdmin() ? `<td><div class="row-actions">${["Pendiente", "Suspendida"].includes(membership.status) ? button("Activar", "membership-status", "success", `data-id="${membership.id}" data-next="Activa"`) : ""}${["Activa", "Proxima a vencer"].includes(membership.status) ? button("Suspender", "membership-status", "warning", `data-id="${membership.id}" data-next="Suspendida"`) : ""}${!["Cancelada", "Vencida"].includes(membership.status) ? button("Cancelar", "membership-status", "danger", `data-id="${membership.id}" data-next="Cancelada"`) : ""}</div></td>` : ""}</tr>`).join("") || `<tr><td colspan="${isAdmin() ? 5 : 4}" class="empty">Sin membresia registrada.</td></tr>`}</tbody></table></div></article>
       </section>`;
   }
@@ -484,7 +487,7 @@
       const schedule = app.data.schedules.find((item) => item.areaId === area.id);
       const availability = schedule ? window.GymRules.availability(app.data, schedule.id) : { available: area.capacity, total: area.capacity, percent: 0 };
       const adminActions = isAdmin() ? `${button(icon("pencil"), "open-area", "icon-only", `data-id="${area.id}" title="Editar"`)}${button("Cambiar estado", "cycle-area-status", "secondary", `data-id="${area.id}"`)}` : "";
-      return `<article class="panel p-5 area-card"><div class="section-head"><div><h2>${esc(area.name)}</h2><p>${branchName(area.branchId)}</p></div>${badge(area.status)}</div><p class="mt-3 text-sm text-slate-600">${esc(area.description)}</p><dl class="detail-grid mt-4"><div><dt>Capacidad</dt><dd>${area.capacity}</dd></div><div><dt>Horario</dt><dd>${esc(area.schedule)}</dd></div><div><dt>Maquinas</dt><dd>${app.data.machines.filter((machine) => machine.areaId === area.id).length}</dd></div><div><dt>Cupos</dt><dd>${availability.available}/${availability.total}</dd></div></dl><div class="mt-4 row-actions">${button(icon("eye"), "area-detail", "icon-only", `data-id="${area.id}" title="Ver"`)}${adminActions}</div></article>`;
+      return `<article class="panel p-5 area-card"><div class="section-head"><div><h2>${esc(area.name)}</h2><p>${branchName(area.branchId)} / ${esc(area.type || "Area")}</p></div>${badge(area.status)}</div><p class="mt-3 text-sm text-slate-600">${esc(area.description)}</p><dl class="detail-grid mt-4"><div><dt>Capacidad</dt><dd>${area.capacity}</dd></div><div><dt>Horario</dt><dd>${esc(area.schedule)}</dd></div><div><dt>Recurso</dt><dd>${esc(area.resourceName || "No asignado")}</dd></div><div><dt>Clases / reservas</dt><dd>${area.allowsClasses === false ? "No" : "Si"} / ${area.allowsReservations === false ? "No" : "Si"}</dd></div><div><dt>Equipos</dt><dd>${app.data.machines.filter((machine) => machine.areaId === area.id).length}</dd></div><div><dt>Cupos</dt><dd>${availability.available}/${availability.total}</dd></div></dl><div class="mt-4 row-actions">${button(icon("eye"), "area-detail", "icon-only", `data-id="${area.id}" title="Ver"`)}${adminActions}</div></article>`;
     }).join("") || `<article class="panel empty">No hay areas con estos filtros.</article>`}</section>`;
   }
 
@@ -506,7 +509,7 @@
   function scheduleCard(schedule) {
     const spaces = window.GymRules.availability(app.data, schedule.id);
     const color = spaces.state === "Disponible" ? "green" : spaces.state === "Pocos cupos" ? "yellow" : "red";
-    return `<article class="panel schedule-card ${color} p-5"><div class="section-head"><div><h2>${areaName(schedule.areaId)}</h2><p>${branchName(schedule.branchId)}</p></div>${badge(spaces.state)}</div><div class="mt-4 flex items-center gap-3 text-ink"><span class="time-chip">${schedule.start}</span><span>al</span><span class="time-chip">${schedule.end}</span></div><dl class="detail-grid mt-4"><div><dt>Fecha</dt><dd>${schedule.date}</dd></div><div><dt>Entrenador</dt><dd>${trainerName(schedule.trainerId)}</dd></div><div><dt>Reservados</dt><dd>${spaces.reserved}</dd></div><div><dt>Disponibles</dt><dd>${spaces.available}/${spaces.total}</dd></div></dl><div class="mt-4 h-2 rounded-full bg-slate-200"><span class="block h-2 rounded-full" style="width:${spaces.percent}%; background: var(--schedule-color)"></span></div></article>`;
+    return `<article class="panel schedule-card ${color} p-5"><div class="section-head"><div><h2>${esc(schedule.type || areaName(schedule.areaId))}</h2><p>${branchName(schedule.branchId)} / ${areaName(schedule.areaId)}</p></div>${badge(spaces.state)}</div><div class="mt-4 flex items-center gap-3 text-ink"><span class="time-chip">${schedule.start}</span><span>al</span><span class="time-chip">${schedule.end}</span></div><dl class="detail-grid mt-4"><div><dt>Fecha</dt><dd>${schedule.date}</dd></div><div><dt>Coach</dt><dd>${trainerName(schedule.trainerId)}</dd></div><div><dt>Duracion</dt><dd>${schedule.durationMinutes || 60} min</dd></div><div><dt>Cupo</dt><dd>${schedule.capacity}</dd></div><div><dt>Inscritos</dt><dd>${spaces.reserved}</dd></div><div><dt>Disponibles</dt><dd>${spaces.available}/${spaces.total}</dd></div></dl><div class="mt-4 h-2 rounded-full bg-slate-200"><span class="block h-2 rounded-full" style="width:${spaces.percent}%; background: var(--schedule-color)"></span></div></article>`;
   }
 
   function reservations() {
@@ -545,16 +548,38 @@
   }
 
   function coachPanel() {
+    if (app.user.role === "client") return clientCoaching();
     const trainerId = app.user.role === "trainer" ? app.user.trainerId : app.data.trainers[0]?.id;
     const schedules = app.data.schedules.filter((schedule) => app.user.role === "trainer" ? schedule.trainerId === trainerId : true);
     return page("Panel del coach", "Clases y sesiones asignadas con participantes, asistencia e historial.") +
       `<section class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">${schedules.map((schedule) => { const participants = app.data.reservations.filter((reservation) => reservation.scheduleId === schedule.id); const actions = `${button("Ver participantes", "class-participants", "secondary", `data-id="${schedule.id}"`)}${button("Iniciar", "class-start", "secondary", `data-id="${schedule.id}"`)}${button("Finalizar", "class-finish", "success", `data-id="${schedule.id}"`)}${button("Historial", "class-history", "ghost", `data-id="${schedule.id}"`)}`; return `<article class="panel p-5 area-card"><div class="section-head"><div><h2>${esc(schedule.type || areaName(schedule.areaId))}</h2><p>${schedule.date} / ${schedule.start}-${schedule.end}</p></div>${badge(schedule.status)}</div><dl class="detail-grid mt-4"><div><dt>Sucursal</dt><dd>${branchName(schedule.branchId)}</dd></div><div><dt>Area</dt><dd>${areaName(schedule.areaId)}</dd></div><div><dt>Personas inscritas</dt><dd>${participants.length}</dd></div><div><dt>Cupos</dt><dd>${participants.length}/${schedule.capacity}</dd></div><div><dt>Coach</dt><dd>${trainerName(schedule.trainerId)}</dd></div><div><dt>Estado</dt><dd>${schedule.status}</dd></div></dl><div class="row-actions mt-4">${actions}</div></article>`; }).join("")}</section>`;
   }
 
+  function clientCoaching() {
+    const client = byId("clients", app.user.clientId);
+    const membership = window.GymRules.membershipFor(app.data, client?.id);
+    const plan = window.GymRules.planFor(app.data, membership);
+    const coachingLimit = plan?.id === "p-haute" ? "3 sesiones al mes" : "1 sesion por semana";
+    const sessions = app.data.schedules.filter((schedule) => schedule.type === "Coaching");
+    const myReservations = app.data.reservations.filter((reservation) => reservation.clientId === client?.id && sessions.some((schedule) => schedule.id === reservation.scheduleId));
+    return page("Coaching", "Sesiones disponibles y reservas personales de coaching.") +
+      `<section class="grid gap-4 sm:grid-cols-3">${metric("Plan", plan?.name || "Sin membresia", coachingLimit, "badge-check", "green")}${metric("Reservas", myReservations.length, "sesiones de coaching", "calendar-check", "blue")}${metric("Completadas", myReservations.filter((item) => item.status === "Completada").length, "historial personal", "check-circle-2", "green")}</section>
+      <section class="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">${sessions.map((schedule) => { const spaces = window.GymRules.availability(app.data, schedule.id); const mine = myReservations.find((reservation) => reservation.scheduleId === schedule.id); return `<article class="panel p-5"><div class="section-head"><div><h2>Coaching</h2><p>${schedule.date} / ${schedule.start}-${schedule.end}</p></div>${badge(mine?.status || spaces.state)}</div><dl class="detail-grid mt-4"><div><dt>Sucursal</dt><dd>${branchName(schedule.branchId)}</dd></div><div><dt>Coach</dt><dd>${trainerName(schedule.trainerId)}</dd></div><div><dt>Cupos</dt><dd>${spaces.available}/${spaces.total}</dd></div><div><dt>Estado</dt><dd>${mine ? "Reservado" : "Disponible"}</dd></div></dl>${mine ? "" : `<div class="row-actions mt-4">${button("Reservar", "quick-reserve", "primary", `data-id="${schedule.id}"`)}</div>`}</article>`; }).join("") || `<article class="panel empty">No hay sesiones de coaching programadas.</article>`}</section>`;
+  }
+
   function poolBoxing() {
-    const items = app.data.schedules.filter((schedule) => ["Natacion", "Boxeo"].includes(schedule.type));
+    const client = byId("clients", app.user.clientId);
+    const membership = window.GymRules.membershipFor(app.data, client?.id);
+    const plan = window.GymRules.planFor(app.data, membership);
+    const items = app.data.schedules.filter((schedule) => {
+      if (!["Natacion", "Boxeo"].includes(schedule.type)) return false;
+      const branch = byId("branches", schedule.branchId);
+      const spaces = window.GymRules.availability(app.data, schedule.id);
+      if (schedule.type === "Boxeo") return plan?.id === "p-haute" && branch?.hasBoxingRing && spaces.available > 0;
+      return branch?.hasPool && spaces.available > 0;
+    });
     return page("Piscina y boxeo", "Disponibilidad segun membresia, cupos y amenidades de sucursal.") +
-      `<section class="grid gap-4 md:grid-cols-2">${items.map((schedule) => { const branch = byId("branches", schedule.branchId); const allowed = schedule.type === "Natacion" ? branch?.hasPool : branch?.hasBoxingRing; const spaces = window.GymRules.availability(app.data, schedule.id); return `<article class="panel p-5"><div class="section-head"><div><h2>${esc(schedule.type)}</h2><p>${branchName(schedule.branchId)} / ${schedule.date}</p></div>${badge(allowed ? spaces.state : "No disponible")}</div><dl class="detail-grid mt-4"><div><dt>Horario</dt><dd>${schedule.start}-${schedule.end}</dd></div><div><dt>Cupos</dt><dd>${spaces.available}/${spaces.total}</dd></div><div><dt>Duracion</dt><dd>${schedule.durationMinutes || 60} min</dd></div><div><dt>Regla</dt><dd>${schedule.type === "Boxeo" ? "Basica sin acceso; Haute segun disponibilidad" : "Acceso segun plan"}</dd></div></dl></article>`; }).join("")}</section>`;
+      `<section class="grid gap-4 md:grid-cols-2">${items.map((schedule) => { const spaces = window.GymRules.availability(app.data, schedule.id); return `<article class="panel p-5"><div class="section-head"><div><h2>${esc(schedule.type)}</h2><p>${branchName(schedule.branchId)} / ${schedule.date}</p></div>${badge(spaces.state)}</div><dl class="detail-grid mt-4"><div><dt>Horario</dt><dd>${schedule.start}-${schedule.end}</dd></div><div><dt>Coach</dt><dd>${trainerName(schedule.trainerId)}</dd></div><div><dt>Cupos</dt><dd>${spaces.available}/${spaces.total}</dd></div><div><dt>Duracion</dt><dd>${schedule.durationMinutes || 60} min</dd></div><div><dt>Regla</dt><dd>${schedule.type === "Boxeo" ? "Visible solo para Haute con ring operativo" : "Acceso segun plan"}</dd></div></dl></article>`; }).join("") || `<article class="panel empty">No hay clases disponibles para tu membresia y sucursal.</article>`}</section>`;
   }
 
   function store() {
@@ -632,7 +657,7 @@
     });
     const paid = filteredPayments.filter((payment) => payment.status === "Pagado");
     return page("Reportes", "Categorias administrativas con filtros, graficas, tablas y exportaciones.", `${button(`${icon("printer")} Imprimir`, "print-report", "ghost")}${button(`${icon("download")} Exportar CSV`, "export-report", "secondary")}${button(`${icon("file-down")} Descargar reporte`, "download-report", "primary")}`) +
-      `<section class="panel p-5"><div class="tabs">${["Clientes", "Empleados", "Compras", "Financiero", "Diario"].map((name) => `<button class="${tab === name ? "active" : ""}" data-action="report-tab" data-tab="${name}">${name}</button>`).join("")}</div><div class="mt-4 grid gap-3 lg:grid-cols-5"><input id="reportFrom" class="form-control" type="date" value="${esc(f.from || "2026-09-01")}"><input id="reportTo" class="form-control" type="date" value="${esc(f.to || "2026-09-30")}"><select id="reportBranch" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((b) => ({ value: b.id, label: b.name })), f.branch || "")}</select><select id="reportMethod" class="form-control"><option value="">Todos los metodos</option>${options(["Efectivo", "Tarjeta", "Transferencia"], f.method || "")}</select><select id="reportStatus" class="form-control"><option value="">Todos los estados</option>${options(["Pendiente", "Pagado", "Rechazado", "Anulado", "Confirmada", "Cancelada", "En mantenimiento", "Aprobada", "Recibida", "En revision"], f.status || "")}</select></div></section>
+      `<section class="panel p-5"><div class="tabs">${["Clientes", "Empleados", "Compras", "Financiero", "Diario", "Boxeo"].map((name) => `<button class="${tab === name ? "active" : ""}" data-action="report-tab" data-tab="${name}">${name}</button>`).join("")}</div><div class="mt-4 grid gap-3 lg:grid-cols-5"><input id="reportFrom" class="form-control" type="date" value="${esc(f.from || "2026-09-01")}"><input id="reportTo" class="form-control" type="date" value="${esc(f.to || "2026-09-30")}"><select id="reportBranch" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((b) => ({ value: b.id, label: b.name })), f.branch || "")}</select><select id="reportMethod" class="form-control"><option value="">Todos los metodos</option>${options(["Efectivo", "Tarjeta", "Transferencia"], f.method || "")}</select><select id="reportStatus" class="form-control"><option value="">Todos los estados</option>${options(["Pendiente", "Pagado", "Rechazado", "Anulado", "Confirmada", "Cancelada", "En mantenimiento", "Aprobada", "Recibida", "En revision"], f.status || "")}</select></div></section>
       ${reportBody(tab, filteredPayments, paid)}`;
   }
 
@@ -641,6 +666,7 @@
     if (tab === "Empleados") return employeeReport();
     if (tab === "Compras") return purchaseReport();
     if (tab === "Diario") return dailyReport();
+    if (tab === "Boxeo") return boxingReport();
     return financialReport(filteredPayments, paid);
   }
 
@@ -721,6 +747,20 @@
     return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Reportes guardados", app.data.dailyReports.length, "persisten aunque falle el correo", "save", "green")}${metric("Asistencias", app.data.dailyReports.reduce((s, r) => s + r.attendedUsers, 0), "usuarios que asistieron", "user-check", "blue")}${metric("Ingresos diarios", money(app.data.dailyReports.reduce((s, r) => s + r.totalIncome, 0)), "total consolidado", "wallet", "green")}${metric("Advertencias", app.data.dailyReports.reduce((s, r) => s + r.accessWarnings, 0), "accesos sin salida", "triangle-alert", "yellow")}</section><section class="panel mt-5 overflow-hidden">${simpleTable(["Fecha", "Sucursal", "Asistieron", "Tiempo prom.", "Hora pico", "Membresias", "Productos", "Servicios", "Natacion", "Boxeo", "Ingresos", "Sin salida", "Correo"], rows)}</section>`;
   }
 
+  function boxingReport() {
+    const boxing = app.data.schedules.filter((schedule) => schedule.type === "Boxeo");
+    const rows = boxing.map((schedule) => {
+      const participants = app.data.reservations.filter((reservation) => reservation.scheduleId === schedule.id);
+      const present = participants.filter((reservation) => reservation.attendance === "Presente").length;
+      const spaces = window.GymRules.availability(app.data, schedule.id);
+      return [schedule.date, `${schedule.start}-${schedule.end}`, branchName(schedule.branchId), areaName(schedule.areaId), trainerName(schedule.trainerId), participants.length, present, `${spaces.percent}%`, schedule.status];
+    });
+    const completed = boxing.filter((schedule) => schedule.status === "Completada").length;
+    const cancelled = boxing.filter((schedule) => ["Cancelada", "Cerrado"].includes(schedule.status)).length;
+    const popular = Object.entries(countBy(boxing, (schedule) => schedule.start)).sort((a, b) => b[1] - a[1]).map(([hour, total]) => [hour, total]);
+    return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Clases de boxeo", boxing.length, "programadas", "dumbbell", "blue")}${metric("Participantes", rows.reduce((sum, row) => sum + Number(row[5]), 0), "inscritos", "users-round", "green")}${metric("Completadas", completed, "sesiones cerradas", "check-circle-2", "green")}${metric("Canceladas", cancelled, "sin ejecutar", "circle-alert", "red")}</section><section class="mt-5 grid gap-5 xl:grid-cols-2"><article class="panel overflow-hidden"><div class="section-head p-5"><div><h2>Detalle por clase</h2><p>Participantes, asistencia y ocupacion.</p></div></div>${simpleTable(["Fecha", "Hora", "Sucursal", "Area", "Coach", "Participantes", "Asistencia", "Ocupacion", "Estado"], rows)}</article>${summaryTable("Horarios mas solicitados", popular)}</section>`;
+  }
+
   function planForm(plan = {}) {
     if (!isAdmin()) return toast("Solo administracion puede editar membresias.", "error");
     showModal(plan.id ? "Editar membresia" : "Nueva membresia", `<form id="planForm" data-id="${esc(plan.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Nombre</span><input id="planNameInput" class="form-control" value="${esc(plan.name || "")}" required></label><label class="form-field"><span>Precio</span><input id="planPriceInput" type="number" class="form-control" value="${esc(plan.price || 250)}"></label><label class="form-field"><span>Duracion dias</span><input id="planDurationInput" type="number" class="form-control" value="${esc(plan.durationDays || 30)}"></label><label class="form-field"><span>Limite de reservas</span><input id="planReservationLimit" type="number" class="form-control" value="${esc(plan.reservationLimit || 4)}"></label><label class="form-field"><span>Estado</span><select id="planStatusInput" class="form-control">${options(["Activa", "Inactiva"], plan.status || "Activa")}</select></label><label class="form-field"><span>Areas permitidas</span><select id="planAreasInput" class="form-control" multiple>${app.data.areas.map((area) => `<option value="${area.id}" ${(plan.areas || []).includes(area.id) ? "selected" : ""}>${esc(area.name)} / ${branchName(area.branchId)}</option>`).join("")}</select></label><label class="form-field md:col-span-2"><span>Beneficios (uno por linea: nombre | limite | periodo)</span><textarea id="planBenefitsInput" class="form-control" rows="5">${esc((plan.benefits || []).map((item) => `${item.name} | ${item.limit}${item.unit || ""} | ${item.period}`).join("\n"))}</textarea></label><label class="form-field md:col-span-2"><span>Pendientes de confirmacion</span><input id="planPendingInput" class="form-control" value="${esc((plan.pendingBenefits || []).join(", "))}"></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar membresia</button></form>`);
@@ -766,8 +806,9 @@
   }
 
   function areaForm(area = {}) {
-    const [opens = "06:00", closes = "21:00"] = String(area.schedule || "06:00-21:00").split("-");
-    showModal(area.id ? "Editar area" : "Nueva area", `<form id="areaForm" data-id="${esc(area.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Nombre</span><input id="areaName" class="form-control" value="${esc(area.name || "")}" required></label><label class="form-field"><span>Sucursal</span><select id="areaBranch" class="form-control">${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), area.branchId || "b1")}</select></label><label class="form-field md:col-span-2"><span>Descripcion</span><textarea id="areaDescription" class="form-control" rows="3">${esc(area.description || "")}</textarea></label><label class="form-field"><span>Capacidad maxima</span><input id="areaCapacity" type="number" class="form-control" value="${esc(area.capacity || 10)}"></label><label class="form-field"><span>Estado</span><select id="areaStatus" class="form-control">${options(["Disponible", "Capacidad limitada", "Completa", "Cerrada", "En mantenimiento"], area.status || "Disponible")}</select></label><label class="form-field"><span>Apertura</span><input id="areaOpens" type="time" class="form-control" value="${esc(opens)}"></label><label class="form-field"><span>Cierre</span><input id="areaCloses" type="time" class="form-control" value="${esc(closes)}"></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar area</button></form>`);
+    const defaultSchedule = (area.name || "Boxeo") === "Boxeo" ? "06:00-19:00" : "06:00-21:00";
+    const [opens = "06:00", closes = "21:00"] = String(area.schedule || defaultSchedule).split("-");
+    showModal(area.id ? "Editar area" : "Nueva area", `<form id="areaForm" data-id="${esc(area.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Nombre</span><select id="areaName" class="form-control">${options(["Cardio", "Pesas", "Natacion", "Boxeo", "Spinning", "Entrenamiento funcional", "Salon de clases"], area.name || "Boxeo")}</select></label><label class="form-field"><span>Tipo</span><select id="areaType" class="form-control">${options(["Area deportiva", "Area de entrenamiento", "Amenidad", "Servicio"], area.type || "Area deportiva")}</select></label><label class="form-field"><span>Sucursal</span><select id="areaBranch" class="form-control">${options(app.data.branches.map((branch) => ({ value: branch.id, label: `${branch.name}${branch.hasBoxingRing ? " / boxeo habilitado" : ""}` })), area.branchId || "b1")}</select></label><label class="form-field"><span>Recurso principal</span><input id="areaResource" class="form-control" value="${esc(area.resourceName || (area.name === "Boxeo" ? "Ring de boxeo" : ""))}"></label><label class="form-field md:col-span-2"><span>Descripcion</span><textarea id="areaDescription" class="form-control" rows="3">${esc(area.description || "")}</textarea></label><label class="form-field"><span>Capacidad fisica</span><input id="areaCapacity" type="number" class="form-control" value="${esc(area.capacity || 15)}"></label><label class="form-field"><span>Estado</span><select id="areaStatus" class="form-control">${options(["Disponible", "Capacidad limitada", "Completa", "Cerrada", "En mantenimiento"], area.status || "Disponible")}</select></label><label class="form-field"><span>Apertura</span><input id="areaOpens" type="time" class="form-control" value="${esc(opens)}"></label><label class="form-field"><span>Cierre</span><input id="areaCloses" type="time" class="form-control" value="${esc(closes)}"></label><label class="form-field"><span>Admite clases</span><select id="areaAllowsClasses" class="form-control">${options([{ value: "si", label: "Si" }, { value: "no", label: "No" }], area.allowsClasses === false ? "no" : "si")}</select></label><label class="form-field"><span>Admite reservas</span><select id="areaAllowsReservations" class="form-control">${options([{ value: "si", label: "Si" }, { value: "no", label: "No" }], area.allowsReservations === false ? "no" : "si")}</select></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar area</button></form>`);
   }
 
   function machineForm(machine = {}) {
@@ -913,9 +954,15 @@
   function submitArea(form) {
     if (!isAdmin()) return toast("Solo administracion puede guardar areas.", "error");
     const area = form.dataset.id ? byId("areas", form.dataset.id) : { id: uid("a") };
-    Object.assign(area, { name: $("#areaName").value.trim(), branchId: $("#areaBranch").value, description: $("#areaDescription").value.trim(), capacity: Number($("#areaCapacity").value), schedule: `${$("#areaOpens").value}-${$("#areaCloses").value}`, status: $("#areaStatus").value });
+    const branch = byId("branches", $("#areaBranch").value);
+    const name = $("#areaName").value.trim();
+    if (name === "Boxeo" && !branch?.hasBoxingRing) return toast("Solo puedes configurar Boxeo en sucursales con la amenidad habilitada.", "error");
+    Object.assign(area, { name, type: $("#areaType").value, resourceName: $("#areaResource").value.trim(), branchId: $("#areaBranch").value, description: $("#areaDescription").value.trim(), capacity: Number($("#areaCapacity").value), schedule: `${$("#areaOpens").value}-${$("#areaCloses").value}`, status: $("#areaStatus").value, allowsClasses: $("#areaAllowsClasses").value === "si", allowsReservations: $("#areaAllowsReservations").value === "si" });
     if (!area.name) return toast("El nombre del area es obligatorio.", "error");
     if (!form.dataset.id) app.data.areas.unshift(area);
+    if (area.name === "Boxeo" && area.resourceName && !app.data.machines.some((machine) => machine.areaId === area.id && machine.type === "Boxeo")) {
+      app.data.machines.unshift({ id: uid("ma"), code: `BOX-${String(app.data.machines.length + 1).padStart(3, "0")}`, name: area.resourceName, type: "Boxeo", areaId: area.id, brand: "Pendiente", model: "Ring", simultaneousCapacity: Number(area.capacity || 15), acquiredAt: today, lastMaintenance: today, nextMaintenance: "2026-10-10", certificate: { status: "Pendiente", fileName: "", reviewedBy: "", reviewedAt: "", observations: "Certificado requerido para operar." }, notes: "Recurso principal del area de Boxeo.", status: "Pendiente de documentacion" });
+    }
     window.GymReservations.audit(app.data, app.user, "Areas", form.dataset.id ? "Editar area" : "Crear area", area.name);
     save(); closeModal(); render(); toast("Area guardada.");
   }
@@ -1049,6 +1096,7 @@
     if (action === "class-finish") return classStatus(id, "Completada");
     if (action === "class-history") return classHistory(id);
     if (action === "service-request") return requestService(id);
+    if (action === "quick-reserve") return quickReserve(id);
     if (action === "maintenance-detail") return maintenanceDetail(id);
     if (action === "start-maintenance") return startMaintenance(id);
     if (action === "finish-maintenance") return finishMaintenanceForm(byId("maintenance", id));
@@ -1160,6 +1208,13 @@
   function requestService(serviceId) {
     const service = byId("services", serviceId);
     toast(`Solicitud de cita registrada para ${service.name}.`);
+  }
+
+  function quickReserve(scheduleId) {
+    if (app.user.role !== "client") return toast("Accion disponible para clientes.", "error");
+    const result = window.GymReservations.create(app.data, { clientId: app.user.clientId, scheduleId, status: "Confirmada" }, app.user);
+    if (!result.ok) return toast(result.reason, "error");
+    save(); render(); toast("Reserva creada.");
   }
 
   function logout() {
@@ -1438,6 +1493,21 @@
     if (data.plans.length !== 2) data.plans = clone(seed.plans || []);
     const planIds = data.plans.map((plan) => plan.id);
     data.memberships = data.memberships.filter((membership) => planIds.includes(membership.planId));
+    data.clients.forEach((client) => {
+      const related = data.memberships
+        .filter((membership) => membership.clientId === client.id)
+        .sort((a, b) => {
+          const score = (membership) => (membership.id === client.membershipId ? 3 : 0) + (membership.status === "Activa" ? 2 : 0) + (membership.status === "Proxima a vencer" ? 1 : 0);
+          return score(b) - score(a) || String(b.endDate || "").localeCompare(String(a.endDate || ""));
+        });
+      const current = related[0];
+      if (current) {
+        client.membershipId = current.id;
+        related.slice(1).forEach((membership) => {
+          if (membership.status === "Activa") membership.status = "Cancelada";
+        });
+      }
+    });
     data.clients.forEach((client, index) => {
       client.code ||= `CLI-${String(index + 1).padStart(3, "0")}`;
       client.joinedAt ||= today;
@@ -1455,10 +1525,32 @@
       branch.hasBoxingRing ??= branch.amenities.some((name) => String(name).toLowerCase() === "boxeo");
       if (branch.status === "Disponible") branch.status = "Activa";
     });
+    const premium = data.branches.find((branch) => branch.id === "b1");
+    if (premium) {
+      premium.code = premium.code === "Z10" ? "PREM" : premium.code;
+      premium.name = premium.name === "Zona 10 Performance" ? "Sucursal Premium" : premium.name;
+      premium.email = premium.email === "zona10@gym.test" ? "premium@gym.test" : premium.email;
+      premium.hasBoxingRing = true;
+      if (!premium.amenities.includes("Boxeo")) premium.amenities.push("Boxeo");
+    }
+    let boxingArea = data.areas.find((area) => area.id === "a-boxeo" || area.name === "Boxeo");
+    if (!boxingArea) {
+      boxingArea = { id: "a-boxeo" };
+      data.areas.push(boxingArea);
+    }
+    Object.assign(boxingArea, { name: "Boxeo", type: "Area deportiva", resourceName: "Ring de boxeo", description: boxingArea.description || "Area deportiva con ring; solo sucursales con amenidad de boxeo pueden ofertarla.", branchId: "b1", capacity: Number(boxingArea.capacity || 15), schedule: boxingArea.schedule === "06:00-21:00" ? "06:00-19:00" : boxingArea.schedule || "06:00-19:00", allowsClasses: true, allowsReservations: true, status: boxingArea.status || "Disponible" });
     data.machines.forEach((machine) => {
       if (["Disponible"].includes(machine.status) || String(machine.status).startsWith("Reserva") || String(machine.status).startsWith("En u")) machine.status = "Operativo";
       machine.certificate ||= { status: "Pendiente", fileName: "", reviewedBy: "", reviewedAt: "", observations: "" };
     });
+    let ring = data.machines.find((machine) => machine.areaId === "a-boxeo" && machine.type === "Boxeo");
+    if (!ring) {
+      ring = { id: "ma-boxeo", code: "BOX-001", type: "Boxeo", areaId: "a-boxeo", brand: "CombatFit", model: "R15", acquiredAt: "2025-05-10", lastMaintenance: "2026-08-01", nextMaintenance: "2026-10-01", notes: "Recurso principal del area de Boxeo." };
+      data.machines.push(ring);
+    }
+    Object.assign(ring, { name: "Ring de boxeo", simultaneousCapacity: Number(ring.simultaneousCapacity || 15), certificate: ring.certificate || { status: "Aprobado", fileName: "cert-ring-boxeo.pdf", reviewedBy: "Valeria Rivas", reviewedAt: "2026-08-01", observations: "Certificado de calidad vigente; apto para clases y reservas." }, status: ["Operativo", "En mantenimiento", "Danado", "Fuera de servicio", "Retirado"].includes(ring.status) ? ring.status : "Operativo" });
+    if (!data.schedules.some((schedule) => schedule.id === "s4")) data.schedules.push({ id: "s4", type: "Boxeo", date: "2026-09-10", start: "18:00", end: "19:00", areaId: "a-boxeo", branchId: "b1", trainerId: "t4", capacity: 15, durationMinutes: 60, status: "Disponible" });
+    if (!data.schedules.some((schedule) => schedule.id === "s8")) data.schedules.push({ id: "s8", type: "Boxeo", date: "2026-09-12", start: "07:00", end: "08:00", areaId: "a-boxeo", branchId: "b1", trainerId: "t4", capacity: 15, durationMinutes: 60, status: "Disponible" });
     data.reservations.forEach((reservation) => {
       delete reservation.machineId;
       reservation.attendance ||= reservation.status === "Completada" ? "Presente" : reservation.status === "No asistio" ? "Ausente" : "Pendiente";
