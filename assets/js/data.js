@@ -41,6 +41,38 @@ window.GYM_SEED = {
     { employeeId: "e5", period: "2026-09", metrics: [{ label: "Venta de membresias", goal: 40, result: 44, unit: "ventas", threshold: 85, bonusAmount: 700, status: "Bono completo" }, { label: "Atencion o satisfaccion del cliente", goal: 90, result: 82, unit: "%", threshold: 80, bonusAmount: 500, status: "Bono parcial" }], clientsServed: 132, absences: 0, rating: 4.7 },
     { employeeId: "e6", period: "2026-09", metrics: [{ label: "Venta de membresias", goal: 38, result: 30, unit: "ventas", threshold: 85, bonusAmount: 700, status: "No alcanzado" }, { label: "Atencion o satisfaccion del cliente", goal: 90, result: 0, unit: "%", threshold: 80, bonusAmount: 500, status: "Pendiente de evaluacion" }], clientsServed: 102, absences: 1, rating: 4.4 }
   ],
+  evaluationSeasons: [
+    {
+      id: "season-active-2026",
+      name: "Temporada alta 2026",
+      startDate: "2026-09-01",
+      endDate: "2026-09-30",
+      status: "Activa",
+      branchId: "all",
+      minSurveys: 1,
+      metrics: [
+        { key: "coach_sessions", role: "Coach", label: "Coaching impartido", goal: 1, unit: "sesiones", maxBonus: 700, tiers: [{ from: 0, bonusPercent: 0 }, { from: 80, bonusPercent: 90 }, { from: 95, bonusPercent: 100 }] },
+        { key: "coach_satisfaction", role: "Coach", label: "Satisfaccion de clientes", goal: 100, unit: "%", maxBonus: 500, tiers: [{ from: 0, bonusPercent: 0 }, { from: 80, bonusPercent: 90 }, { from: 95, bonusPercent: 100 }] },
+        { key: "reception_sales", role: "Recepcionista", label: "Venta de membresias", goal: 2, unit: "ventas", maxBonus: 700, tiers: [{ from: 0, bonusPercent: 0 }, { from: 80, bonusPercent: 90 }, { from: 95, bonusPercent: 100 }] },
+        { key: "reception_satisfaction", role: "Recepcionista", label: "Satisfaccion en atencion", goal: 100, unit: "%", maxBonus: 500, tiers: [{ from: 0, bonusPercent: 0 }, { from: 80, bonusPercent: 90 }, { from: 95, bonusPercent: 100 }] }
+      ],
+      closedResults: null
+    },
+    {
+      id: "season-closed-2026",
+      name: "Temporada abril-junio 2026",
+      startDate: "2026-04-01",
+      endDate: "2026-06-30",
+      status: "Cerrada",
+      branchId: "all",
+      minSurveys: 2,
+      metrics: [
+        { key: "coach_sessions", role: "Coach", label: "Coaching impartido", goal: 60, unit: "sesiones", maxBonus: 650, tiers: [{ from: 0, bonusPercent: 0 }, { from: 80, bonusPercent: 75 }, { from: 95, bonusPercent: 100 }] },
+        { key: "coach_satisfaction", role: "Coach", label: "Satisfaccion de clientes", goal: 100, unit: "%", maxBonus: 450, tiers: [{ from: 0, bonusPercent: 0 }, { from: 80, bonusPercent: 80 }, { from: 95, bonusPercent: 100 }] }
+      ],
+      closedResults: [{ employeeId: "e1", totalBonus: 980 }, { employeeId: "e2", totalBonus: 520 }]
+    }
+  ],
   areas: [
     { id: "a-cardio", name: "Cardio", description: "Caminadoras, elipticas y bicicletas como acceso general.", branchId: "b1", capacity: 20, schedule: "05:00-22:00", status: "Disponible" },
     { id: "a-pesas", name: "Pesas", description: "Peso libre y maquinas de fuerza.", branchId: "b1", capacity: 18, schedule: "05:00-22:00", status: "Disponible" },
@@ -73,17 +105,24 @@ window.GYM_SEED = {
     { id: "s7", type: "Cardio", date: "2026-09-11", start: "17:00", end: "18:00", areaId: "a-cardio", branchId: "b1", trainerId: "t2", capacity: 14, status: "Disponible" }
   ],
   reservations: [
-    { id: "r1", clientId: "c1", scheduleId: "s1", status: "Confirmada", attendance: "Pendiente", createdAt: "2026-09-09 08:00", history: [{ status: "Pendiente", at: "2026-09-09 08:00" }, { status: "Confirmada", at: "2026-09-09 08:03" }] },
+    { id: "r1", clientId: "c1", scheduleId: "s1", status: "Completada", attendance: "Presente", createdAt: "2026-09-09 08:00", history: [{ status: "Pendiente", at: "2026-09-09 08:00" }, { status: "Confirmada", at: "2026-09-09 08:03" }, { status: "Completada", at: "2026-09-10 07:00" }] },
     { id: "r2", clientId: "c2", scheduleId: "s2", status: "Pendiente", attendance: "Pendiente", createdAt: "2026-09-09 09:10", history: [{ status: "Pendiente", at: "2026-09-09 09:10" }] },
     { id: "r3", clientId: "c3", scheduleId: "s5", status: "Confirmada", attendance: "Pendiente", createdAt: "2026-09-08 18:10", history: [{ status: "Pendiente", at: "2026-09-08 18:10" }, { status: "Confirmada", at: "2026-09-08 18:11" }] },
     { id: "r4", clientId: "c1", scheduleId: "s4", status: "Completada", attendance: "Presente", createdAt: "2026-09-06 07:20", history: [{ status: "Pendiente", at: "2026-09-06 07:20" }, { status: "Confirmada", at: "2026-09-06 07:25" }, { status: "En curso", at: "2026-09-10 18:00" }, { status: "Completada", at: "2026-09-10 19:00" }] }
+  ],
+  satisfactionSurveys: [
+    { id: "sv1", serviceId: "r1", serviceType: "Sesion de coaching", clientId: "c1", employeeId: "e1", branchId: "b1", date: "2026-09-10", rating: 4, quality: 4, kindness: 4, clarity: 4, satisfaction: 4, comment: "Buena sesion, seguimiento claro.", status: "Respondida" },
+    { id: "sv2", serviceId: "r-coach-demo-2", serviceType: "Sesion de coaching", clientId: "c2", employeeId: "e1", branchId: "b1", date: "2026-09-12", rating: 4, quality: 4, kindness: 4, clarity: 4, satisfaction: 4, comment: "Atencion profesional.", status: "Respondida" },
+    { id: "sv3", serviceId: "pay1", serviceType: "Pago atendido", clientId: "c1", employeeId: "e6", branchId: "b1", date: "2026-09-01", rating: 5, quality: 5, kindness: 5, clarity: 4, satisfaction: 5, comment: "Proceso rapido.", status: "Respondida" },
+    { id: "sv4", serviceId: "pay2", serviceType: "Renovacion de membresia", clientId: "c2", employeeId: "e6", branchId: "b1", date: "2026-09-05", rating: 3, quality: 3, kindness: 4, clarity: 3, satisfaction: 3, comment: "", status: "Respondida" },
+    { id: "sv-pending-1", serviceId: "r4", serviceType: "Clase completada", clientId: "c1", employeeId: "e4", branchId: "b1", date: "2026-09-10", status: "Pendiente" }
   ],
   maintenance: [
     { id: "mt1", machineId: "ma4", type: "Preventivo", startDate: "2026-09-09", estimatedEnd: "2026-09-12", technician: "TecnoFit", cost: 450, description: "Revision de bicicletas de spinning.", result: "", status: "En proceso" }
   ],
   payments: [
-    { id: "pay1", clientId: "c1", branchId: "b1", itemType: "Membresia", planId: "p-haute", amount: 350, date: "2026-09-01", method: "Tarjeta", receipt: "FAC-1001", status: "Pagado", invoice: { number: "1001", series: "REN-A", date: "2026-09-01", status: "Enviada", email: "ana@gym.test", sent: true, attempts: 1 } },
-    { id: "pay2", clientId: "c2", branchId: "b1", itemType: "Membresia", planId: "p-basica", amount: 250, date: "2026-08-20", method: "Efectivo", receipt: "FAC-1002", status: "Pagado", invoice: { number: "1002", series: "REN-A", date: "2026-08-20", status: "Emitida", email: "carlos@gym.test", sent: false, attempts: 0 } },
+    { id: "pay1", clientId: "c1", branchId: "b1", itemType: "Membresia", planId: "p-haute", amount: 350, date: "2026-09-01", method: "Tarjeta", receipt: "FAC-1001", status: "Pagado", receptionistId: "e6", invoice: { number: "1001", series: "REN-A", date: "2026-09-01", status: "Enviada", email: "ana@gym.test", sent: true, attempts: 1 } },
+    { id: "pay2", clientId: "c2", branchId: "b1", itemType: "Membresia", planId: "p-basica", amount: 250, date: "2026-09-05", method: "Efectivo", receipt: "FAC-1002", status: "Pagado", receptionistId: "e6", invoice: { number: "1002", series: "REN-A", date: "2026-09-05", status: "Emitida", email: "carlos@gym.test", sent: false, attempts: 0 } },
     { id: "pay3", clientId: "c3", branchId: "b2", itemType: "Producto", amount: 125, date: "2026-09-04", method: "Transferencia", receipt: "FAC-1003", status: "Pagado", invoice: { number: "1003", series: "REN-B", date: "2026-09-04", status: "Pendiente de emision", email: "sofia@gym.test", sent: false, attempts: 0 } }
   ],
   purchaseOrders: [

@@ -230,6 +230,7 @@ tr:last-child td { border-bottom: 0; }
 .bonus-card.green { border-color: #86efac; background: #f0fdf4; }
 .bonus-card.yellow { border-color: #fde68a; background: #fffbeb; }
 .bonus-card.red { border-color: #fecaca; background: #fef2f2; }
+.bonus-card.gray { border-color: #cbd5e1; background: #f8fafc; }
 
 .toast {
   display: flex;

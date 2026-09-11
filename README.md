@@ -27,13 +27,16 @@ Cuentas:
 - Reportes por categorias con imprimir, CSV y descarga simulada.
 - Clientes con busqueda, filtros por sucursal, membresia y estado, detalle de pagos, membresias, reservas, asistencias y observaciones.
 - Empleados con busqueda, filtros por sucursal, puesto y estado, acciones de activacion/desactivacion y datos laborales.
+- Metricas y bonos por temporada de evaluacion, con escalones configurables, montos maximos por metrica e historico cerrado sin recalculo automatico.
 - Metricas individuales para coaches y recepcionistas, con dos bonos configurables e independientes.
+- Encuestas de satisfaccion para servicios completados, con conversion a porcentaje, comentarios y minimo configurable por temporada.
 - Ordenes de compra de equipos, repuestos, accesorios, oficina e insumos, con certificacion obligatoria para equipos.
 - Facturacion electronica simulada con estados, envio por correo, descarga y reintento.
 - Cafeteria y suplementos con productos, bebidas, combos, partners, stock y ventas.
 - Vista de cliente Menu / Tienda con carrito, descuentos por membresia y factura.
 - Servicios tercerizados con nutricionista como partner y agenda marcada como propuesta pendiente de validacion.
 - Panel del coach limitado a sus clases, participantes, asistencia, historial y metricas.
+- Vista de cliente para responder encuestas pendientes y consultar confirmaciones enviadas.
 - Reportes financieros restringidos por rol y reporte diario por sucursal.
 - Area fisica de Boxeo en Sucursal Premium con ring certificado, capacidad y horario configurables.
 - Clases demo de Boxeo con coach, cupo, inscritos, disponibilidad y reporte especifico.

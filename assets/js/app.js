@@ -11,7 +11,7 @@
     admin: { label: "Administrador", permissions: ["all"] },
     reception: { label: "Recepcionista", permissions: ["dashboard", "clients", "memberships", "schedules", "reservations", "payments", "store", "services"] },
     trainer: { label: "Entrenador", permissions: ["dashboard", "schedules", "coachPanel", "staffMetrics"] },
-    client: { label: "Cliente", permissions: ["dashboard", "memberships", "schedules", "reservations", "coachPanel", "poolBoxing", "store", "services", "payments"] }
+    client: { label: "Cliente", permissions: ["dashboard", "memberships", "schedules", "reservations", "coachPanel", "poolBoxing", "store", "services", "payments", "surveys"] }
   };
 
   const nav = [
@@ -32,6 +32,7 @@
     ["maintenance", "wrench", "Mantenimiento", "maintenance"],
     ["staffMetrics", "target", "Metricas del personal", "staffMetrics"],
     ["reports", "chart-no-axes-combined", "Reportes", "reports"],
+    ["surveys", "star", "Encuestas", "surveys"],
     ["services", "heart-pulse", "Servicios", "services"],
     ["settings", "settings", "Configuracion", "settings"]
   ];
@@ -171,13 +172,41 @@
     const plan = window.GymRules.planFor(app.data, membership);
     return plan?.id === "p-haute" ? 10 : 0;
   }
-  function metricBonus(metric) {
-    const percent = metricPercent(metric);
-    if (metric.status === "Pendiente de evaluacion") return 0;
-    if (percent >= 100) return Number(metric.bonusAmount || 0);
-    if (percent >= Number(metric.threshold || 0)) return Math.round(Number(metric.bonusAmount || 0) * 0.5);
-    return 0;
+  function activeSeason(employee = null) {
+    const active = app.data.evaluationSeasons.filter((season) => season.status === "Activa");
+    if (employee) return active.find((season) => season.branchId === employee.branchId) || active.find((season) => season.branchId === "all") || app.data.evaluationSeasons[0];
+    return active.find((season) => season.branchId === "all") || active[0] || app.data.evaluationSeasons[0];
   }
+  function metricConfig(season, employee, key) { return (season?.metrics || []).find((metric) => metric.key === key && metric.role === employee.position); }
+  function tierFor(metric, percent) {
+    return [...(metric?.tiers || [{ from: 0, bonusPercent: 0 }])].sort((a, b) => Number(b.from) - Number(a.from)).find((tier) => percent >= Number(tier.from)) || { from: 0, bonusPercent: 0 };
+  }
+  function earnedBonus(metric, percent) {
+    const tier = tierFor(metric, percent);
+    return { tier, amount: Math.round(Number(metric?.maxBonus || 0) * Number(tier.bonusPercent || 0) / 100) };
+  }
+  function surveyPercent(survey) {
+    const values = [survey.rating, survey.quality, survey.kindness, survey.clarity, survey.satisfaction].map(Number).filter(Boolean);
+    return values.length ? Math.round((values.reduce((sum, value) => sum + value, 0) / (values.length * 5)) * 100) : 0;
+  }
+  function surveysForEmployee(employeeId, season) {
+    return app.data.satisfactionSurveys.filter((survey) => survey.employeeId === employeeId && survey.status === "Respondida" && survey.date >= season.startDate && survey.date <= season.endDate);
+  }
+  function average(values) { return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : 0; }
+  function averageStars(surveys) { return surveys.length ? (surveys.reduce((sum, survey) => sum + Number(survey.rating || 0), 0) / surveys.length).toFixed(1) : "0.0"; }
+  function surveyServiceLabel(survey) {
+    const reservation = byId("reservations", survey.serviceId);
+    if (reservation) {
+      const schedule = scheduleOf(reservation);
+      return `${survey.serviceType} / ${schedule?.date || survey.date} ${schedule?.start || ""} / ${areaName(schedule?.areaId)}`;
+    }
+    const payment = byId("payments", survey.serviceId);
+    if (payment) return `${survey.serviceType} / ${payment.date} / ${planName(payment.planId)}`;
+    return `${survey.serviceType} / ${survey.date}`;
+  }
+  function seasonsOverlap(a, b) { return a.startDate <= b.endDate && b.startDate <= a.endDate; }
+  function sameSeasonScope(a, b) { return a.branchId === b.branchId || a.branchId === "all" || b.branchId === "all"; }
+  function metricBonus(metric) { return earnedBonus({ maxBonus: metric.bonusAmount, tiers: [{ from: 0, bonusPercent: 0 }, { from: metric.threshold || 80, bonusPercent: 50 }, { from: 100, bonusPercent: 100 }] }, metricPercent(metric)).amount; }
   function orderSubtotal(order) { return (order.items || []).reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0); }
   function orderTax(order) { return Math.round(orderSubtotal(order) * Number(order.taxRate ?? 0.12)); }
   function orderTotal(order) { return orderSubtotal(order) + orderTax(order); }
@@ -185,15 +214,14 @@
   function metricPercent(item) { return item.goal ? Math.round((Number(item.result || 0) / Number(item.goal)) * 100) : 0; }
   function metricMet(item) { return Number(item.result || 0) >= Number(item.goal || 0); }
   function bonusState(employee) {
-    const record = metricRecord(employee.id);
-    const metrics = record?.metrics || [];
-    const bonus = metrics.reduce((sum, metric) => sum + metricBonus(metric), 0);
-    const possible = metrics.reduce((sum, metric) => sum + Number(metric.bonusAmount || 0), 0);
-    const metCount = metrics.filter((metric) => metricBonus(metric) >= Number(metric.bonusAmount || 0)).length;
-    const pending = metrics.some((metric) => metric.status === "Pendiente de evaluacion");
-    const tone = pending ? "yellow" : bonus >= possible && possible ? "green" : bonus > 0 ? "yellow" : "red";
+    const season = activeSeason(employee);
+    const metrics = buildEmployeeMetrics(employee, season);
+    const bonus = metrics.reduce((sum, metric) => sum + metric.earnedBonus, 0);
+    const possible = metrics.reduce((sum, metric) => sum + Number(metric.maxBonus || 0), 0);
+    const pending = metrics.some((metric) => metric.pending);
+    const tone = pending ? "gray" : bonus >= possible && possible ? "green" : bonus > 0 ? "yellow" : "red";
     const state = pending ? "Pendiente de evaluacion" : bonus >= possible && possible ? "Bono completo" : bonus > 0 ? "Bono parcial" : "No alcanzado";
-    return { record, metCount, approved: bonus > 0, tone, bonus, possible, total: Number(employee.baseSalary || 0) + bonus, state };
+    return { record: { employeeId: employee.id, period: season?.name, metrics }, season, metrics, approved: bonus > 0, tone, bonus, possible, total: Number(employee.baseSalary || 0) + bonus, state };
   }
 
   function branchFilter(id) {
@@ -205,12 +233,49 @@
     return collection.filter((item) => item.branchId === branchId);
   }
 
+  function buildEmployeeMetrics(employee, season) {
+    if (!season) return [];
+    const employeeSurveys = surveysForEmployee(employee.id, season);
+    const surveyPercents = employeeSurveys.map(surveyPercent);
+    const satisfactionPercent = average(surveyPercents);
+    const surveyPending = employeeSurveys.length < Number(season.minSurveys || 1);
+    if (employee.position === "Coach") {
+      const trainerId = employee.trainerId;
+      const completed = app.data.reservations.filter((reservation) => {
+        const schedule = scheduleOf(reservation);
+        return schedule?.trainerId === trainerId && schedule.type === "Coaching" && reservation.status === "Completada" && schedule.date >= season.startDate && schedule.date <= season.endDate;
+      }).length;
+      const sessionsMetric = metricConfig(season, employee, "coach_sessions");
+      const sessionPercent = sessionsMetric?.goal ? Math.min(100, Math.round((completed / Number(sessionsMetric.goal)) * 100)) : 0;
+      const sessionBonus = earnedBonus(sessionsMetric, sessionPercent);
+      const satisfactionMetric = metricConfig(season, employee, "coach_satisfaction");
+      const satisfactionBonus = earnedBonus(satisfactionMetric, satisfactionPercent);
+      return [
+        { key: "coach_sessions", label: "Coaching impartido", goal: sessionsMetric?.goal || 0, result: completed, unit: "sesiones", percent: sessionPercent, tier: sessionBonus.tier, maxBonus: sessionsMetric?.maxBonus || 0, earnedBonus: sessionBonus.amount, pending: false },
+        { key: "coach_satisfaction", label: "Satisfaccion de clientes", goal: satisfactionMetric?.goal || 100, result: satisfactionPercent, unit: "%", percent: satisfactionPercent, tier: satisfactionBonus.tier, maxBonus: satisfactionMetric?.maxBonus || 0, earnedBonus: surveyPending ? 0 : satisfactionBonus.amount, pending: surveyPending, surveys: employeeSurveys }
+      ];
+    }
+    if (employee.position === "Recepcionista") {
+      const salesMetric = metricConfig(season, employee, "reception_sales");
+      const sales = app.data.payments.filter((payment) => payment.receptionistId === employee.id && payment.status === "Pagado" && payment.date >= season.startDate && payment.date <= season.endDate).length;
+      const salesPercent = salesMetric?.goal ? Math.min(100, Math.round((sales / Number(salesMetric.goal)) * 100)) : 0;
+      const salesBonus = earnedBonus(salesMetric, salesPercent);
+      const satisfactionMetric = metricConfig(season, employee, "reception_satisfaction");
+      const satisfactionBonus = earnedBonus(satisfactionMetric, satisfactionPercent);
+      return [
+        { key: "reception_sales", label: "Venta de membresias", goal: salesMetric?.goal || 0, result: sales, unit: "ventas", percent: salesPercent, tier: salesBonus.tier, maxBonus: salesMetric?.maxBonus || 0, earnedBonus: salesBonus.amount, pending: false },
+        { key: "reception_satisfaction", label: "Satisfaccion en atencion", goal: satisfactionMetric?.goal || 100, result: satisfactionPercent, unit: "%", percent: satisfactionPercent, tier: satisfactionBonus.tier, maxBonus: satisfactionMetric?.maxBonus || 0, earnedBonus: surveyPending ? 0 : satisfactionBonus.amount, pending: surveyPending, surveys: employeeSurveys }
+      ];
+    }
+    return [];
+  }
+
   function renderNav() {
-    const clientLabels = { dashboard: "Inicio", memberships: "Mi membresia", schedules: "Clases", reservations: "Mis reservas", coachPanel: "Coaching", store: "Menu / Tienda", payments: "Mis pagos y facturas" };
+    const clientLabels = { dashboard: "Inicio", memberships: "Mi membresia", schedules: "Clases", reservations: "Mis reservas", coachPanel: "Coaching", store: "Menu / Tienda", payments: "Mis pagos y facturas", surveys: "Encuestas" };
     const adminOrder = ["dashboard", "branches", "clients", "employees", "memberships", "access", "inventory", "schedules", "reservations", "store", "payments", "purchaseOrders", "maintenance", "staffMetrics", "reports", "settings"];
     let items = nav.filter(([id, , , permission]) => {
       if (app.user.role === "admin") return adminOrder.includes(id);
-      if (app.user.role !== "client" && id === "poolBoxing") return false;
+      if (app.user.role !== "client" && ["poolBoxing", "surveys"].includes(id)) return false;
       return can(permission);
     });
     if (app.user.role === "admin") items = adminOrder.map((id) => items.find((item) => item[0] === id)).filter(Boolean);
@@ -224,7 +289,7 @@
   function render() {
     if (!can(nav.find((item) => item[0] === app.view)?.[3] || "dashboard")) app.view = "dashboard";
     renderNav();
-    const views = { dashboard, branches, clients, employees, memberships, access, inventory, schedules, reservations, coachPanel, poolBoxing, store, maintenance, purchaseOrders, payments, staffMetrics, reports, services, settings };
+    const views = { dashboard, branches, clients, employees, memberships, access, inventory, schedules, reservations, coachPanel, poolBoxing, store, maintenance, purchaseOrders, payments, staffMetrics, reports, services, surveys, settings };
     $("#content").innerHTML = (views[app.view] || dashboard)();
     window.lucide?.createIcons();
     setTimeout(renderCharts, 0);
@@ -258,7 +323,7 @@
     const expiring = app.data.memberships.filter((membership) => membership.status === "Proxima a vencer" && scope.clients.some((client) => client.id === membership.clientId)).length;
     const employees = branchScoped(app.data.employees, scope.branchId);
     const bonusEmployees = employees.filter((employee) => ["Coach", "Recepcionista"].includes(employee.position) && bonusState(employee).approved);
-    const bonusAmount = bonusEmployees.reduce((sum, employee) => sum + Number(employee.bonus || 0), 0);
+    const bonusAmount = bonusEmployees.reduce((sum, employee) => sum + Number(bonusState(employee).bonus || 0), 0);
     const orders = app.data.purchaseOrders.filter((order) => scope.branchId === "all" || order.branchId === scope.branchId);
     const pendingOrders = orders.filter((order) => ["Borrador", "Solicitada", "En revision"].includes(order.status)).length;
     const approvedOrders = orders.filter((order) => ["Aprobada", "Ordenada"].includes(order.status)).length;
@@ -384,22 +449,42 @@
     const employee = byId("employees", selectedId) || candidates[0];
     app.filters.staffEmployee = employee?.id;
     const state = employee ? bonusState(employee) : {};
-    return page("Metricas del personal", "Resultados individuales y regla visual de bonificacion por empleado.", "") +
-      `<section class="panel p-5"><label class="form-field mt-0 max-w-md"><span>Empleado</span><select id="staffEmployeeSelect" class="form-control" ${app.user.role === "admin" ? "" : "disabled"}>${options(candidates.map((item) => ({ value: item.id, label: `${item.name} / ${item.position} / ${branchName(item.branchId)}` })), employee?.id)}</select></label></section>
+    const seasonActions = isAdmin() ? `${button(`${icon("plus")} Nueva temporada`, "open-season", "primary")}${button("Copiar temporada", "copy-season", "secondary", `data-id="${state.season?.id || ""}"`)}` : "";
+    return page("Metricas y bonos", "Temporadas, escalones configurables, encuestas y resultados individuales.", seasonActions) +
+      `${seasonPanel(state.season)}
+      <section class="panel p-5"><label class="form-field mt-0 max-w-md"><span>Empleado</span><select id="staffEmployeeSelect" class="form-control" ${app.user.role === "admin" ? "" : "disabled"}>${options(candidates.map((item) => ({ value: item.id, label: `${item.name} / ${item.position} / ${branchName(item.branchId)}` })), employee?.id)}</select></label></section>
       ${employee ? staffMetricDetail(employee, state) : `<section class="panel mt-5 empty">No hay metricas registradas.</section>`}`;
   }
 
+  function seasonPanel(active) {
+    const rows = app.data.evaluationSeasons.map((season) => [season.name, `${season.startDate} al ${season.endDate}`, season.branchId === "all" ? "Todas" : branchName(season.branchId), badge(season.status), isAdmin() ? `<div class="row-actions">${button("Editar", "open-season", "ghost", `data-id="${season.id}"`)}${season.status !== "Activa" ? button("Activar", "season-status", "success", `data-id="${season.id}" data-next="Activa"`) : ""}${season.status === "Activa" ? button("Cerrar", "season-status", "warning", `data-id="${season.id}" data-next="Cerrada"`) : ""}</div>` : ""]);
+    return `<section class="panel mb-5 overflow-hidden"><div class="section-head p-5"><div><h2>Temporadas de evaluacion</h2><p>Activa: ${esc(active?.name || "Sin temporada activa")}. Los resultados cerrados no se recalculan automaticamente.</p></div></div>${simpleTable(["Nombre", "Periodo", "Sucursal", "Estado", "Acciones"], rows)}</section>`;
+  }
+
   function staffMetricDetail(employee, state) {
-    const metrics = state.record?.metrics || [];
+    const metrics = state.metrics || [];
+    const employeeSurveys = surveysForEmployee(employee.id, state.season || activeSeason());
+    const surveyRows = employeeSurveys.map((survey) => [surveyServiceLabel(survey), clientName(survey.clientId), `${surveyPercent(survey)}%`, `${survey.rating || 0}/5`, esc(survey.comment || "Sin comentario")]);
     const bonusAction = isAdmin() ? `<div class="mt-4">${button(`${icon("pencil")} Modificar bonificacion`, "open-bonus", "ghost", `data-id="${employee.id}"`)}</div>` : "";
-    return `<section class="mt-5 grid gap-5 xl:grid-cols-[1.25fr_.75fr]"><article class="grid gap-4 md:grid-cols-2">${metrics.map(metricCard).join("")}</article><article class="panel bonus-card ${state.tone} p-5"><div class="section-head"><div><h2>Resumen de bonificacion</h2><p>${esc(employee.name)} / ${esc(employee.position)}</p></div>${badge(state.state)}</div><dl class="detail-grid mt-4"><div><dt>Sueldo base</dt><dd>${money(employee.baseSalary)}</dd></div>${metrics.map((metric) => `<div><dt>${esc(metric.label)}</dt><dd>${money(metricBonus(metric))}<small>Configurado ${money(metric.bonusAmount)}</small></dd></div>`).join("")}<div><dt>Total estimado</dt><dd>${money(state.total)}</dd></div><div><dt>Resultado</dt><dd>${esc(state.state)}</dd></div></dl><p class="mt-4 text-sm font-bold text-slate-700">Cada bono se calcula segun su propia regla configurable.</p>${bonusAction}</article></section>
-    <section class="panel mt-5 p-5"><div class="section-head"><div><h2>Detalle operativo</h2><p>Solo sesiones iniciadas y finalizadas como Completada cuentan para metricas de coach.</p></div></div><dl class="detail-grid mt-4"><div><dt>Sucursal</dt><dd>${branchName(employee.branchId)}</dd></div><div><dt>Clases asignadas</dt><dd>${esc(state.record?.assignedClasses || "No aplica")}</dd></div><div><dt>Clientes atendidos</dt><dd>${state.record?.clientsServed ?? 0}</dd></div><div><dt>Ausencias</dt><dd>${state.record?.absences ?? 0}</dd></div><div><dt>Calificacion promedio</dt><dd>${state.record?.rating ?? "-"}</dd></div><div><dt>Horario</dt><dd>${esc(employee.workSchedule)}</dd></div></dl></section>`;
+    return `<section class="mt-5 grid gap-5 xl:grid-cols-[1.25fr_.75fr]"><article class="grid gap-4 md:grid-cols-2">${metrics.map(metricCard).join("")}</article><article class="panel bonus-card ${state.tone} p-5"><div class="section-head"><div><h2>Resumen de bonificacion</h2><p>${esc(employee.name)} / ${esc(employee.position)}</p></div>${badge(state.state)}</div><dl class="detail-grid mt-4"><div><dt>Temporada</dt><dd>${esc(state.season?.name || "")}</dd></div><div><dt>Sueldo base</dt><dd>${money(employee.baseSalary)}</dd></div>${metrics.map((metric) => `<div><dt>${esc(metric.label)}</dt><dd>${money(metric.earnedBonus)}<small>Maximo ${money(metric.maxBonus)}</small></dd></div>`).join("")}<div><dt>Total bonificaciones</dt><dd>${money(state.bonus)}</dd></div><div><dt>Total estimado</dt><dd>${money(state.total)}</dd></div></dl><p class="mt-4 text-sm font-bold text-slate-700">Cada metrica paga de forma independiente segun el escalon alcanzado.</p>${bonusAction}</article></section>
+    <section class="panel mt-5 p-5"><div class="section-head"><div><h2>Historial de temporadas</h2><p>Consulta historica sin recalculo automatico para temporadas cerradas.</p></div></div>${simpleTable(["Temporada", "Estado", "Periodo", "Resultado cerrado"], app.data.evaluationSeasons.map((season) => { const closed = (season.closedResults || []).find((item) => item.employeeId === employee.id); return [season.name, season.status, `${season.startDate} al ${season.endDate}`, closed ? money(closed.totalBonus) : "Sin cierre"]; }))}</section>
+    ${isAdmin() ? `<section class="panel mt-5 overflow-hidden"><div class="section-head p-5"><div><h2>Auditoria de encuestas</h2><p>Promedio ${averageStars(employeeSurveys)} estrellas, ${employeeSurveys.length} encuesta(s), satisfaccion ${average(employeeSurveys.map(surveyPercent))}%.</p></div></div>${simpleTable(["Servicio", "Cliente", "Porcentaje", "Estrellas", "Comentario"], surveyRows)}</section>` : ""}`;
   }
 
   function metricCard(item) {
-    const percent = metricPercent(item);
-    const met = metricMet(item);
-    return `<article class="panel p-5"><div class="section-head"><div><h2>${esc(item.label)}</h2><p>${esc(item.unit)}</p></div>${badge(item.status || (met ? "Bono completo" : "No alcanzado"))}</div><dl class="detail-grid mt-4"><div><dt>Meta</dt><dd>${item.goal}</dd></div><div><dt>Resultado</dt><dd>${item.result}</dd></div><div><dt>Cumplimiento</dt><dd>${percent}%</dd></div><div><dt>Umbral</dt><dd>${item.threshold || 0}%</dd></div><div><dt>Monto configurado</dt><dd>${money(item.bonusAmount)}</dd></div><div><dt>Bono calculado</dt><dd>${money(metricBonus(item))}</dd></div></dl><div class="mt-4 h-3 rounded-full bg-slate-200"><span class="block h-3 rounded-full ${met ? "bg-emerald-500" : "bg-amber-500"}" style="width:${Math.min(percent, 100)}%"></span></div></article>`;
+    const tone = item.pending ? "bg-slate-400" : item.earnedBonus <= 0 ? "bg-red-500" : item.earnedBonus >= item.maxBonus ? "bg-emerald-500" : "bg-amber-500";
+    return `<article class="panel p-5"><div class="section-head"><div><h2>${esc(item.label)}</h2><p>${esc(item.unit)}</p></div>${badge(item.pending ? "Pendiente de evaluacion" : item.earnedBonus >= item.maxBonus ? "Bono completo" : item.earnedBonus > 0 ? "Bono parcial" : "No alcanzado")}</div><dl class="detail-grid mt-4"><div><dt>Meta</dt><dd>${item.goal}</dd></div><div><dt>Resultado</dt><dd>${item.result}</dd></div><div><dt>Cumplimiento</dt><dd>${item.percent}%</dd></div><div><dt>Escalon alcanzado</dt><dd>Desde ${item.tier?.from || 0}%</dd></div><div><dt>Bono maximo</dt><dd>${money(item.maxBonus)}</dd></div><div><dt>% bono pagado</dt><dd>${item.tier?.bonusPercent || 0}%</dd></div><div><dt>Monto ganado</dt><dd>${money(item.earnedBonus)}</dd></div><div><dt>Encuestas</dt><dd>${item.surveys?.length ?? "-"}</dd></div></dl><div class="mt-4 h-3 rounded-full bg-slate-200"><span class="block h-3 rounded-full ${tone}" style="width:${Math.min(item.percent || 0, 100)}%"></span></div>${item.pending ? `<p class="mt-3 text-sm font-bold text-slate-600">Pendiente por cantidad insuficiente de encuestas.</p>` : ""}</article>`;
+  }
+
+  function surveys() {
+    const client = byId("clients", app.user.clientId);
+    const list = app.data.satisfactionSurveys.filter((survey) => survey.clientId === client?.id);
+    const pending = list.filter((survey) => survey.status === "Pendiente");
+    const answered = list.filter((survey) => survey.status === "Respondida");
+    return page("Encuestas", "Evalua servicios completados y consulta tus respuestas enviadas.") +
+      `<section class="grid gap-4 sm:grid-cols-3">${metric("Pendientes", pending.length, "servicios por evaluar", "star", pending.length ? "yellow" : "green")}${metric("Respondidas", answered.length, "una por servicio", "check-circle-2", "green")}${metric("Satisfaccion enviada", `${average(answered.map(surveyPercent))}%`, "promedio personal", "sparkles", "blue")}</section>
+      <section class="panel mt-5 overflow-hidden"><div class="section-head p-5"><div><h2>Encuestas pendientes</h2><p>Solo aparecen servicios completados y vinculados a tu cuenta.</p></div></div>${simpleTable(["Servicio", "Empleado", "Sucursal", "Fecha", "Accion"], pending.map((survey) => [surveyServiceLabel(survey), employeeName(survey.employeeId), branchName(survey.branchId), survey.date, button("Responder", "open-survey", "primary", `data-id="${survey.id}"`)]))}</section>
+      <section class="panel mt-5 overflow-hidden"><div class="section-head p-5"><div><h2>Encuestas enviadas</h2><p>Confirmacion historica de tus respuestas.</p></div></div>${simpleTable(["Servicio", "Empleado", "Fecha", "Estrellas", "Satisfaccion"], answered.map((survey) => [surveyServiceLabel(survey), employeeName(survey.employeeId), survey.date, `${survey.rating}/5`, `${surveyPercent(survey)}%`]))}</section>`;
   }
 
   function purchaseOrders() {
@@ -689,8 +774,10 @@
   }
 
   function employeeReport() {
-    const bonusApproved = app.data.employees.filter((employee) => ["Coach", "Recepcionista"].includes(employee.position) && bonusState(employee).approved).length;
-    return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Empleados", app.data.employees.length, "nomina demo", "id-card", "blue")}${metric("Con bono", bonusApproved, "bono parcial o completo", "award", "green")}${metric("Sin bono", app.data.staffMetrics.length - bonusApproved, "no alcanzado o pendiente", "triangle-alert", "yellow")}${metric("Monto aprobado", money(app.data.employees.reduce((s, e) => s + bonusState(e).bonus, 0)), "bonificaciones", "wallet", "orange")}</section><section class="mt-5 grid gap-5 xl:grid-cols-2">${summaryTable("Empleados por sucursal", Object.entries(countBy(app.data.employees, (e) => branchName(e.branchId))).map(([k, v]) => [k, v]))}${summaryTable("Empleados por puesto", Object.entries(countBy(app.data.employees, (e) => e.position)).map(([k, v]) => [k, v]))}</section><section class="panel mt-5 overflow-hidden"><div class="section-head p-5"><div><h2>Metricas por empleado</h2><p>Cumplimiento de metas y bonificaciones.</p></div></div><div class="table-wrap"><table><thead><tr><th>Empleado</th><th>Puesto</th><th>Meta 1</th><th>Meta 2</th><th>Resultado</th></tr></thead><tbody>${app.data.employees.filter((e) => metricRecord(e.id)).map((employee) => { const state = bonusState(employee); return `<tr><td>${esc(employee.name)}</td><td>${esc(employee.position)}</td><td>${badge(metricMet(state.record.metrics[0]) ? "Cumplida" : "No cumplida")}</td><td>${badge(metricMet(state.record.metrics[1]) ? "Cumplida" : "No cumplida")}</td><td>${esc(state.state)}</td></tr>`; }).join("")}</tbody></table></div></section>`;
+    const staff = app.data.employees.filter((employee) => ["Coach", "Recepcionista"].includes(employee.position));
+    const states = staff.map((employee) => ({ employee, state: bonusState(employee) }));
+    const bonusApproved = states.filter((item) => item.state.approved).length;
+    return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Empleados", app.data.employees.length, "nomina demo", "id-card", "blue")}${metric("Con bono", bonusApproved, "bono parcial o completo", "award", "green")}${metric("Sin bono", staff.length - bonusApproved, "no alcanzado o pendiente", "triangle-alert", "yellow")}${metric("Monto aprobado", money(states.reduce((s, item) => s + item.state.bonus, 0)), "bonificaciones", "wallet", "orange")}</section><section class="mt-5 grid gap-5 xl:grid-cols-2">${summaryTable("Empleados por sucursal", Object.entries(countBy(app.data.employees, (e) => branchName(e.branchId))).map(([k, v]) => [k, v]))}${summaryTable("Empleados por puesto", Object.entries(countBy(app.data.employees, (e) => e.position)).map(([k, v]) => [k, v]))}</section><section class="panel mt-5 overflow-hidden"><div class="section-head p-5"><div><h2>Metricas por empleado</h2><p>Cumplimiento de metas y bonificaciones por temporada activa.</p></div></div><div class="table-wrap"><table><thead><tr><th>Empleado</th><th>Puesto</th><th>Primera metrica</th><th>Segunda metrica</th><th>Bonos</th><th>Resultado</th></tr></thead><tbody>${states.map(({ employee, state }) => `<tr><td>${esc(employee.name)}</td><td>${esc(employee.position)}</td><td>${state.metrics[0] ? `${state.metrics[0].percent}% / ${money(state.metrics[0].earnedBonus)}` : "Sin metrica"}</td><td>${state.metrics[1] ? `${state.metrics[1].pending ? "Pendiente" : `${state.metrics[1].percent}%`} / ${money(state.metrics[1].earnedBonus)}` : "Sin metrica"}</td><td>${money(state.bonus)}</td><td>${esc(state.state)}</td></tr>`).join("")}</tbody></table></div></section>`;
   }
 
   function purchaseReport() {
@@ -759,6 +846,21 @@
     const cancelled = boxing.filter((schedule) => ["Cancelada", "Cerrado"].includes(schedule.status)).length;
     const popular = Object.entries(countBy(boxing, (schedule) => schedule.start)).sort((a, b) => b[1] - a[1]).map(([hour, total]) => [hour, total]);
     return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Clases de boxeo", boxing.length, "programadas", "dumbbell", "blue")}${metric("Participantes", rows.reduce((sum, row) => sum + Number(row[5]), 0), "inscritos", "users-round", "green")}${metric("Completadas", completed, "sesiones cerradas", "check-circle-2", "green")}${metric("Canceladas", cancelled, "sin ejecutar", "circle-alert", "red")}</section><section class="mt-5 grid gap-5 xl:grid-cols-2"><article class="panel overflow-hidden"><div class="section-head p-5"><div><h2>Detalle por clase</h2><p>Participantes, asistencia y ocupacion.</p></div></div>${simpleTable(["Fecha", "Hora", "Sucursal", "Area", "Coach", "Participantes", "Asistencia", "Ocupacion", "Estado"], rows)}</article>${summaryTable("Horarios mas solicitados", popular)}</section>`;
+  }
+
+  function seasonForm(season = {}) {
+    const metrics = season.metrics || [
+      { key: "coach_sessions", role: "Coach", label: "Coaching impartido", goal: 4, unit: "sesiones", maxBonus: 700, tiers: [{ from: 0, bonusPercent: 0 }, { from: 80, bonusPercent: 90 }, { from: 95, bonusPercent: 100 }] },
+      { key: "coach_satisfaction", role: "Coach", label: "Satisfaccion de clientes", goal: 100, unit: "%", maxBonus: 500, tiers: [{ from: 0, bonusPercent: 0 }, { from: 80, bonusPercent: 90 }, { from: 95, bonusPercent: 100 }] },
+      { key: "reception_sales", role: "Recepcionista", label: "Venta de membresias", goal: 2, unit: "ventas", maxBonus: 700, tiers: [{ from: 0, bonusPercent: 0 }, { from: 80, bonusPercent: 90 }, { from: 95, bonusPercent: 100 }] },
+      { key: "reception_satisfaction", role: "Recepcionista", label: "Satisfaccion en atencion", goal: 100, unit: "%", maxBonus: 500, tiers: [{ from: 0, bonusPercent: 0 }, { from: 80, bonusPercent: 90 }, { from: 95, bonusPercent: 100 }] }
+    ];
+    showModal(season.id ? "Editar temporada" : "Nueva temporada", `<form id="seasonForm" data-id="${esc(season.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field md:col-span-2"><span>Nombre</span><input id="seasonName" class="form-control" value="${esc(season.name || "Temporada enero-marzo 2026")}" required></label><label class="form-field"><span>Fecha de inicio</span><input id="seasonStart" type="date" class="form-control" value="${esc(season.startDate || today)}"></label><label class="form-field"><span>Fecha de finalizacion</span><input id="seasonEnd" type="date" class="form-control" value="${esc(season.endDate || today)}"></label><label class="form-field"><span>Estado</span><select id="seasonStatus" class="form-control">${options(["Borrador", "Programada", "Activa", "Cerrada", "Cancelada"], season.status || "Borrador")}</select></label><label class="form-field"><span>Sucursal</span><select id="seasonBranch" class="form-control"><option value="all">Todas</option>${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), season.branchId || "all")}</select></label><label class="form-field"><span>Minimo de encuestas</span><input id="seasonMinSurveys" type="number" min="1" class="form-control" value="${esc(season.minSurveys || 1)}"></label><label class="form-field md:col-span-2"><span>Metricas, bonos y escalones configurables</span><textarea id="seasonMetrics" class="form-control" rows="12">${esc(JSON.stringify(metrics, null, 2))}</textarea></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar temporada</button></form>`);
+  }
+
+  function surveyForm(survey) {
+    if (!survey || survey.status !== "Pendiente") return toast("Esta encuesta ya fue respondida o no existe.", "error");
+    showModal("Encuesta de satisfaccion", `<form id="surveyForm" data-id="${esc(survey.id)}" class="grid gap-4 md:grid-cols-2"><div class="info-box md:col-span-2"><b>${esc(surveyServiceLabel(survey))}</b><span>${employeeName(survey.employeeId)} / ${branchName(survey.branchId)} / ${survey.date}</span></div>${["rating:Calificacion general", "quality:Calidad de atencion", "kindness:Amabilidad", "clarity:Claridad de informacion", "satisfaction:Satisfaccion general"].map((item) => { const [id, label] = item.split(":"); return `<label class="form-field"><span>${label}</span><select id="survey${id}" class="form-control">${options([1, 2, 3, 4, 5].map((value) => ({ value, label: `${value} estrella${value > 1 ? "s" : ""}` })), 5)}</select></label>`; }).join("")}<label class="form-field md:col-span-2"><span>Comentario opcional</span><textarea id="surveyComment" class="form-control" rows="3"></textarea></label><button class="btn btn-primary md:col-span-2" type="submit">Enviar encuesta</button></form>`);
   }
 
   function planForm(plan = {}) {
@@ -838,7 +940,7 @@
 
   function handleSubmit(event) {
     const form = event.target;
-    const managed = ["reservationForm", "planForm", "productForm", "branchForm", "clientForm", "employeeForm", "bonusForm", "areaForm", "machineForm", "maintenanceForm", "finishMaintenanceForm", "paymentForm", "purchaseOrderForm", "receivePurchaseOrderForm"];
+    const managed = ["reservationForm", "planForm", "productForm", "branchForm", "clientForm", "employeeForm", "bonusForm", "areaForm", "machineForm", "maintenanceForm", "finishMaintenanceForm", "paymentForm", "purchaseOrderForm", "receivePurchaseOrderForm", "seasonForm", "surveyForm"];
     if (!managed.includes(form.id)) return;
     event.preventDefault();
     if (form.id === "reservationForm") return submitReservation();
@@ -855,6 +957,8 @@
     if (form.id === "paymentForm") return submitPayment();
     if (form.id === "purchaseOrderForm") return submitPurchaseOrder(form);
     if (form.id === "receivePurchaseOrderForm") return submitReceivePurchaseOrder(form);
+    if (form.id === "seasonForm") return submitSeason(form);
+    if (form.id === "surveyForm") return submitSurvey(form);
   }
 
   function submitReservation() {
@@ -949,6 +1053,35 @@
     });
     window.GymReservations.audit(app.data, app.user, "Metricas del personal", "Modificar bonificacion", employee.name);
     save(); closeModal(); render(); toast("Bonificacion actualizada.");
+  }
+
+  function submitSeason(form) {
+    if (!isAdmin()) return toast("Solo administracion puede configurar temporadas.", "error");
+    let metrics = [];
+    try {
+      metrics = JSON.parse($("#seasonMetrics").value);
+    } catch (error) {
+      return toast("Las metricas deben tener formato JSON valido.", "error");
+    }
+    if (!Array.isArray(metrics) || !metrics.length) return toast("Agrega al menos una metrica a la temporada.", "error");
+    const id = form.dataset.id;
+    const season = id ? byId("evaluationSeasons", id) : { id: uid("season"), closedResults: null };
+    Object.assign(season, { name: $("#seasonName").value.trim(), startDate: $("#seasonStart").value, endDate: $("#seasonEnd").value, status: $("#seasonStatus").value, branchId: $("#seasonBranch").value, minSurveys: Number($("#seasonMinSurveys").value || 1), metrics });
+    if (!season.name || !season.startDate || !season.endDate) return toast("Nombre y fechas son obligatorios.", "error");
+    if (season.startDate > season.endDate) return toast("La fecha inicial no puede ser mayor que la final.", "error");
+    if (season.status === "Activa" && activeSeasonConflict(season)) return toast("Ya existe una temporada activa para ese periodo y sucursal.", "error");
+    if (!id) app.data.evaluationSeasons.unshift(season);
+    window.GymReservations.audit(app.data, app.user, "Metricas y bonos", id ? "Editar temporada" : "Crear temporada", season.name);
+    save(); closeModal(); render(); toast("Temporada guardada.");
+  }
+
+  function submitSurvey(form) {
+    const survey = byId("satisfactionSurveys", form.dataset.id);
+    if (!survey || survey.clientId !== app.user.clientId || survey.status !== "Pendiente") return toast("No puedes responder esta encuesta.", "error");
+    if (!surveyServiceCompleted(survey)) return toast("Solo puedes evaluar servicios completados.", "error");
+    Object.assign(survey, { rating: Number($("#surveyrating").value), quality: Number($("#surveyquality").value), kindness: Number($("#surveykindness").value), clarity: Number($("#surveyclarity").value), satisfaction: Number($("#surveysatisfaction").value), comment: $("#surveyComment").value.trim(), status: "Respondida", answeredAt: today });
+    window.GymReservations.audit(app.data, app.user, "Encuestas", "Enviar encuesta", survey.serviceId);
+    save(); closeModal(); render(); toast("Gracias por responder la encuesta.");
   }
 
   function submitArea(form) {
@@ -1061,6 +1194,10 @@
     if (action === "open-client") return clientForm(id ? byId("clients", id) : {});
     if (action === "open-employee") return employeeForm(id ? byId("employees", id) : {});
     if (action === "open-bonus") return bonusForm(byId("employees", id));
+    if (action === "open-season") return isAdmin() ? seasonForm(id ? byId("evaluationSeasons", id) : {}) : toast("Solo administracion puede configurar temporadas.", "error");
+    if (action === "season-status") return changeSeasonStatus(id, el.dataset.next);
+    if (action === "copy-season") return copySeason(id);
+    if (action === "open-survey") return surveyForm(byId("satisfactionSurveys", id));
     if (action === "open-area") return isAdmin() ? areaForm(id ? byId("areas", id) : {}) : toast("Solo administracion puede editar areas.", "error");
     if (action === "open-machine") return isAdmin() ? machineForm(id ? byId("machines", id) : {}) : toast("Solo administracion puede editar maquinas.", "error");
     if (action === "open-maintenance") return maintenanceForm(id ? byId("maintenance", id) : {});
@@ -1108,6 +1245,46 @@
     if (action === "print-report") return window.print();
     if (action === "export-report") return exportCsv(app.data.payments, "renovatio-gym-reporte.csv");
     if (action === "download-report") return downloadReport();
+  }
+
+  function activeSeasonConflict(season) {
+    return app.data.evaluationSeasons.some((item) => item.id !== season.id && item.status === "Activa" && seasonsOverlap(item, season) && sameSeasonScope(item, season));
+  }
+
+  function changeSeasonStatus(id, next) {
+    if (!isAdmin()) return toast("Solo administracion puede cambiar temporadas.", "error");
+    const season = byId("evaluationSeasons", id);
+    if (!season) return toast("Temporada no encontrada.", "error");
+    if (season.status === "Cerrada") return toast("Una temporada cerrada no se modifica automaticamente.", "error");
+    if (next === "Activa" && activeSeasonConflict({ ...season, status: "Activa" })) return toast("Ya existe una temporada activa para ese periodo y sucursal.", "error");
+    if (next === "Cerrada") {
+      season.closedResults = app.data.employees.filter((employee) => ["Coach", "Recepcionista"].includes(employee.position)).map((employee) => {
+        const metrics = buildEmployeeMetrics(employee, season);
+        return { employeeId: employee.id, totalBonus: metrics.reduce((sum, metric) => sum + metric.earnedBonus, 0), metrics };
+      });
+    }
+    season.status = next;
+    window.GymReservations.audit(app.data, app.user, "Metricas y bonos", `Cambiar temporada a ${next}`, season.name);
+    save(); render(); toast(`Temporada ${next.toLowerCase()}.`);
+  }
+
+  function copySeason(id) {
+    if (!isAdmin()) return toast("Solo administracion puede copiar temporadas.", "error");
+    const source = byId("evaluationSeasons", id) || activeSeason();
+    if (!source) return toast("No hay temporada para copiar.", "error");
+    const clone = window.GymStorage?.clone ? window.GymStorage.clone(source) : JSON.parse(JSON.stringify(source));
+    Object.assign(clone, { id: uid("season"), name: `Copia de ${source.name}`, status: "Borrador", closedResults: null });
+    app.data.evaluationSeasons.unshift(clone);
+    window.GymReservations.audit(app.data, app.user, "Metricas y bonos", "Copiar temporada", source.name);
+    save(); render(); seasonForm(clone); toast("Temporada copiada como borrador.");
+  }
+
+  function surveyServiceCompleted(survey) {
+    const reservation = byId("reservations", survey.serviceId);
+    if (reservation) return reservation.status === "Completada";
+    const payment = byId("payments", survey.serviceId);
+    if (payment) return payment.status === "Pagado";
+    return survey.status === "Pendiente";
   }
 
   function togglePlan(id) {
@@ -1486,9 +1663,18 @@
   function normalizeData(data) {
     const seed = window.GYM_SEED || {};
     const clone = (value) => window.GymStorage?.clone ? window.GymStorage.clone(value) : JSON.parse(JSON.stringify(value));
-    ["users", "branches", "plans", "clients", "trainers", "employees", "staffMetrics", "areas", "machines", "memberships", "schedules", "reservations", "maintenance", "payments", "purchaseOrders", "products", "partners", "services", "carts", "dailyReports", "audit"].forEach((key) => {
+    ["users", "branches", "plans", "clients", "trainers", "employees", "staffMetrics", "evaluationSeasons", "satisfactionSurveys", "areas", "machines", "memberships", "schedules", "reservations", "maintenance", "payments", "purchaseOrders", "products", "partners", "services", "carts", "dailyReports", "audit"].forEach((key) => {
       if (!Array.isArray(data[key])) data[key] = clone(seed[key] || []);
     });
+    (seed.evaluationSeasons || []).forEach((season) => {
+      if (!data.evaluationSeasons.some((item) => item.id === season.id)) data.evaluationSeasons.push(clone(season));
+    });
+    (seed.satisfactionSurveys || []).forEach((survey) => {
+      if (!data.satisfactionSurveys.some((item) => item.id === survey.id || item.serviceId === survey.serviceId)) data.satisfactionSurveys.push(clone(survey));
+    });
+    const activeDemoSeason = data.evaluationSeasons.find((season) => season.id === "season-active-2026");
+    const activeCoachSessions = activeDemoSeason?.metrics?.find((metric) => metric.key === "coach_sessions");
+    if (activeCoachSessions && Number(activeCoachSessions.goal) === 4) activeCoachSessions.goal = 1;
     data.plans = data.plans.filter((plan) => ["p-basica", "p-haute"].includes(plan.id));
     if (data.plans.length !== 2) data.plans = clone(seed.plans || []);
     const planIds = data.plans.map((plan) => plan.id);
@@ -1552,6 +1738,7 @@
     if (!data.schedules.some((schedule) => schedule.id === "s4")) data.schedules.push({ id: "s4", type: "Boxeo", date: "2026-09-10", start: "18:00", end: "19:00", areaId: "a-boxeo", branchId: "b1", trainerId: "t4", capacity: 15, durationMinutes: 60, status: "Disponible" });
     if (!data.schedules.some((schedule) => schedule.id === "s8")) data.schedules.push({ id: "s8", type: "Boxeo", date: "2026-09-12", start: "07:00", end: "08:00", areaId: "a-boxeo", branchId: "b1", trainerId: "t4", capacity: 15, durationMinutes: 60, status: "Disponible" });
     data.reservations.forEach((reservation) => {
+      if (reservation.id === "r1") reservation.status = "Completada";
       delete reservation.machineId;
       reservation.attendance ||= reservation.status === "Completada" ? "Presente" : reservation.status === "No asistio" ? "Ausente" : "Pendiente";
       reservation.history ||= [{ status: reservation.status || "Pendiente", at: reservation.createdAt || today }];
@@ -1569,6 +1756,8 @@
       const client = window.GymRules.byId(data, "clients", payment.clientId);
       payment.branchId ||= client?.branchId || data.branches[0]?.id;
       payment.itemType ||= payment.planId ? "Membresia" : "Producto";
+      if (["pay1", "pay2"].includes(payment.id)) payment.receptionistId ||= "e6";
+      if (payment.id === "pay2") payment.date = "2026-09-05";
       payment.invoice ||= createInvoice(payment, client, "Pendiente de emision");
     });
     return data;
