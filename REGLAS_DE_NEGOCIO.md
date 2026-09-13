@@ -57,6 +57,22 @@ Reglas implementadas en `assets/js/validations.js` y `assets/js/app.js`.
 53. La agenda de nutricionista queda como propuesta pendiente de validacion.
 54. El reporte diario por sucursal se guarda aunque falle el envio por correo.
 55. El reporte de Boxeo muestra participantes, asistencia, horarios solicitados, ocupacion y clases completadas/canceladas.
+56. Cada cliente tiene un codigo unico de referido generado a partir de su codigo de cliente.
+57. El programa demostrativo de referidos usa membresia Basica y Q10 como configuracion inicial, pendiente de validacion con el cliente.
+58. Los Q10 no se presentan como regla final: son un valor configurable del prototipo.
+59. Registrar un referido no genera beneficio por si solo.
+60. El flujo requerido es: cliente comparte codigo, referido se registra con ese codigo, compra membresia participante, el pago queda aprobado y entonces se genera el beneficio.
+61. Estados del referido: Invitado, Registrado, Membresia pendiente, Membresia adquirida, Beneficio aprobado, Beneficio aplicado, Vencido y Cancelado.
+62. No se permite que una persona utilice su propio codigo de referido.
+63. Un nuevo cliente solo puede quedar asociado a un referido.
+64. No se duplican beneficios para la misma persona, referido o pago relacionado.
+65. Pagos Pendiente, Rechazado, Anulado o Reembolsado no generan beneficios.
+66. Si un pago aprobado se anula, rechaza o reembolsa, los beneficios pendientes vinculados a ese pago se cancelan.
+67. Un beneficio ya aplicado conserva trazabilidad de referido, pago original, fecha, beneficiario y monto.
+68. El beneficio aplicado no debe exceder el total de la proxima compra o pago pendiente.
+69. El historial de referidos guarda quien refirio, quien fue referido, fecha, sucursal, membresia, pago relacionado y beneficio generado.
+70. Administracion puede filtrar referidos por sucursal, membresia, fecha y estado.
+71. La configuracion de referidos permite nombre de promocion, membresias participantes, fechas, tipo de beneficio, monto, beneficiario, maximo de referidos, vigencia, condiciones y estado.
 
 ## Formula de aforo
 

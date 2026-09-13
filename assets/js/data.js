@@ -125,6 +125,26 @@ window.GYM_SEED = {
     { id: "pay2", clientId: "c2", branchId: "b1", itemType: "Membresia", planId: "p-basica", amount: 250, date: "2026-09-05", method: "Efectivo", receipt: "FAC-1002", status: "Pagado", receptionistId: "e6", invoice: { number: "1002", series: "REN-A", date: "2026-09-05", status: "Emitida", email: "carlos@gym.test", sent: false, attempts: 0 } },
     { id: "pay3", clientId: "c3", branchId: "b2", itemType: "Producto", amount: 125, date: "2026-09-04", method: "Transferencia", receipt: "FAC-1003", status: "Pagado", invoice: { number: "1003", series: "REN-B", date: "2026-09-04", status: "Pendiente de emision", email: "sofia@gym.test", sent: false, attempts: 0 } }
   ],
+  referralProgram: {
+    id: "refprog-demo",
+    name: "Referidos Basica demo",
+    participatingPlanIds: ["p-basica"],
+    startDate: "2026-09-01",
+    endDate: "2026-12-31",
+    benefitType: "Saldo a favor",
+    amount: 10,
+    beneficiary: "Cliente que refiere",
+    maxReferrals: 20,
+    validityDays: 30,
+    conditions: "El referido debe adquirir y pagar una membresia participante. Estado del requisito: pendiente de validacion con el cliente.",
+    status: "Activa"
+  },
+  referrals: [
+    { id: "ref1", referrerClientId: "c1", referralCode: "REF-CLI001", referredClientId: "c2", referredName: "Carlos Ruiz", referredPhone: "5551-2002", referredEmail: "carlos@gym.test", branchId: "b1", membershipId: "m2", paymentId: "pay2", benefitId: "rb1", date: "2026-09-05", status: "Beneficio aprobado" }
+  ],
+  referralBenefits: [
+    { id: "rb1", referralId: "ref1", referrerClientId: "c1", referredClientId: "c2", paymentId: "pay2", type: "Saldo a favor", amount: 10, pendingAmount: 10, beneficiary: "Cliente que refiere", generatedAt: "2026-09-05", expiresAt: "2026-10-05", status: "Aprobado", appliedAt: "", appliedPaymentId: "" }
+  ],
   purchaseOrders: [
     { id: "po1", number: "OC-2026-001", date: "2026-09-01", branchId: "b1", requesterId: "e8", supplier: "FitMachines GT", purchaseType: "Nueva maquina", items: [{ name: "Caminadora comercial", quantity: 2, unitPrice: 14500 }], quotes: [{ supplier: "FitMachines GT", price: 29000, quality: 94 }, { supplier: "ProGym", price: 30300, quality: 90 }, { supplier: "Equipos Maya", price: 28500, quality: 86 }], warranty: "24 meses", deliveryTime: "20 dias", certificate: { status: "Aprobado", fileName: "cert-caminadora.pdf", reviewedBy: "Valeria Rivas", reviewedAt: "2026-09-02", observations: "Certificado valido." }, taxRate: 0.12, reason: "Ampliacion de cardio Zona 10", expectedDelivery: "2026-09-20", observations: "Instalacion incluida.", status: "Ordenada", approvals: { branchAdmin: { by: "e8", at: "2026-09-01 09:00" }, generalManager: { by: "e8", at: "2026-09-01 10:00" } }, reception: null },
     { id: "po2", number: "OC-2026-002", date: "2026-09-02", branchId: "b2", requesterId: "e5", supplier: "Bike Studio", purchaseType: "Nueva maquina", items: [{ name: "Bicicleta indoor", quantity: 5, unitPrice: 6200 }], quotes: [{ supplier: "Bike Studio", price: 31000, quality: 91 }, { supplier: "Indoor Pro", price: 32500, quality: 93 }, { supplier: "SportLine", price: 30000, quality: 84 }], warranty: "18 meses", deliveryTime: "30 dias", certificate: { status: "Pendiente", fileName: "", reviewedBy: "", reviewedAt: "", observations: "No recibido aun." }, taxRate: 0.12, reason: "Reemplazo de bicicletas antiguas", expectedDelivery: "2026-10-01", observations: "Certificado pendiente.", status: "En revision", approvals: { branchAdmin: null, generalManager: null }, reception: null }

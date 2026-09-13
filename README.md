@@ -26,6 +26,9 @@ Cuentas:
 - Dashboard filtrable por sucursal.
 - Reportes por categorias con imprimir, CSV y descarga simulada.
 - Clientes con busqueda, filtros por sucursal, membresia y estado, detalle de pagos, membresias, reservas, asistencias y observaciones.
+- Portal de cliente con modulo de referidos: codigo personal, copiar/compartir, registro de referido, historial, estados, beneficios obtenidos y saldo pendiente.
+- Programa administrativo de referidos configurable desde Configuracion, con membresias participantes, vigencia, tipo/monto de beneficio, beneficiario, limite, condiciones y estado.
+- Historial administrativo de referidos con filtros por sucursal, membresia, fecha y estado; el beneficio se genera solo con pago de membresia aprobado.
 - Empleados con busqueda, filtros por sucursal, puesto y estado, acciones de activacion/desactivacion y datos laborales.
 - Metricas y bonos por temporada de evaluacion, con escalones configurables, montos maximos por metrica e historico cerrado sin recalculo automatico.
 - Metricas individuales para coaches y recepcionistas, con dos bonos configurables e independientes.

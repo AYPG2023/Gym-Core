@@ -11,7 +11,7 @@
     admin: { label: "Administrador", permissions: ["all"] },
     reception: { label: "Recepcionista", permissions: ["dashboard", "clients", "memberships", "schedules", "reservations", "payments", "store", "services"] },
     trainer: { label: "Entrenador", permissions: ["dashboard", "schedules", "coachPanel", "staffMetrics"] },
-    client: { label: "Cliente", permissions: ["dashboard", "memberships", "schedules", "reservations", "coachPanel", "poolBoxing", "store", "services", "payments", "surveys"] }
+    client: { label: "Cliente", permissions: ["dashboard", "memberships", "referrals", "schedules", "reservations", "coachPanel", "poolBoxing", "store", "services", "payments", "surveys"] }
   };
 
   const nav = [
@@ -20,6 +20,7 @@
     ["clients", "users-round", "Clientes", "clients"],
     ["employees", "id-card", "Empleados", "employees"],
     ["memberships", "badge-dollar-sign", "Membresias", "memberships"],
+    ["referrals", "share-2", "Referidos", "referrals"],
     ["access", "scan-line", "Accesos", "access"],
     ["inventory", "warehouse", "Areas y equipos", "inventory"],
     ["schedules", "calendar-days", "Horarios y clases", "schedules"],
@@ -172,6 +173,95 @@
     const plan = window.GymRules.planFor(app.data, membership);
     return plan?.id === "p-haute" ? 10 : 0;
   }
+  function referralCodeFor(client) {
+    const base = String(client?.code || client?.id || "CLIENTE").replace(/[^a-z0-9]/gi, "").toUpperCase();
+    return `REF-${base || "CLIENTE"}`;
+  }
+  function referralProgram() {
+    return app.data.referralProgram || {};
+  }
+  function referralBenefitLabel(program = referralProgram()) {
+    if (program.benefitType === "Descuento porcentual") return `${Number(program.amount || 0)}%`;
+    if (program.benefitType === "Producto o servicio") return esc(program.amount || "Configurable");
+    return money(program.amount);
+  }
+  function referralBenefitTotal(clientId, statuses = ["Aprobado", "Pendiente de aplicar"]) {
+    return app.data.referralBenefits.filter((benefit) => benefit.referrerClientId === clientId && statuses.includes(benefit.status)).reduce((sum, benefit) => sum + Number(benefit.pendingAmount ?? benefit.amount ?? 0), 0);
+  }
+  function referralStatusOptions() {
+    return ["Invitado", "Registrado", "Membresia pendiente", "Membresia adquirida", "Beneficio aprobado", "Beneficio aplicado", "Vencido", "Cancelado"];
+  }
+  function benefitTypeOptions() {
+    return ["Descuento en proxima mensualidad", "Saldo a favor", "Descuento porcentual", "Producto o servicio", "Beneficio para el referido", "Beneficio para ambos"];
+  }
+  function beneficiaryOptions() {
+    return ["Cliente que refiere", "Persona referida", "Ambos"];
+  }
+  function demoReferralNote() {
+    return "Configuracion demostrativa: beneficio de Q10 asociado a la membresia Basica. El tipo exacto de beneficio y su aplicacion estan pendientes de validacion con el cliente.";
+  }
+  function linkReferralToClient(referral) {
+    if (referral.referredClientId) return byId("clients", referral.referredClientId);
+    const email = String(referral.referredEmail || "").toLowerCase();
+    const phone = String(referral.referredPhone || "").replace(/\D/g, "");
+    const client = app.data.clients.find((item) => (email && String(item.email || "").toLowerCase() === email) || (phone && String(item.phone || "").replace(/\D/g, "") === phone));
+    if (client) referral.referredClientId = client.id;
+    return client;
+  }
+  function generateReferralBenefit(payment) {
+    const program = referralProgram();
+    if (!payment || payment.itemType !== "Membresia" || payment.status !== "Pagado") return null;
+    if (program.status !== "Activa") return null;
+    if (program.startDate && payment.date < program.startDate) return null;
+    if (program.endDate && payment.date > program.endDate) return null;
+    if (program.participatingPlanIds?.length && !program.participatingPlanIds.includes(payment.planId)) return null;
+    const referral = app.data.referrals.find((item) => {
+      const client = linkReferralToClient(item);
+      return client?.id === payment.clientId && !["Beneficio aprobado", "Beneficio aplicado", "Cancelado", "Vencido"].includes(item.status);
+    });
+    if (!referral) return null;
+    if (app.data.referralBenefits.some((benefit) => benefit.referralId === referral.id || benefit.paymentId === payment.id)) return null;
+    const approvedForReferrer = app.data.referrals.filter((item) => item.referrerClientId === referral.referrerClientId && ["Beneficio aprobado", "Beneficio aplicado"].includes(item.status)).length;
+    if (program.maxReferrals && approvedForReferrer >= Number(program.maxReferrals)) {
+      referral.status = "Cancelado";
+      referral.cancelReason = "Cantidad maxima de referidos alcanzada.";
+      return null;
+    }
+    const amount = Math.min(Number(program.amount || 0), Number(payment.amount || 0));
+    const benefit = { id: uid("rb"), referralId: referral.id, referrerClientId: referral.referrerClientId, referredClientId: payment.clientId, paymentId: payment.id, type: program.benefitType || "Saldo a favor", amount, pendingAmount: amount, beneficiary: program.beneficiary || "Cliente que refiere", generatedAt: payment.date || today, expiresAt: program.validityDays ? addDays(payment.date || today, Number(program.validityDays)) : "", status: "Aprobado", appliedAt: "", appliedPaymentId: "" };
+    Object.assign(referral, { referredClientId: payment.clientId, membershipId: byId("clients", payment.clientId)?.membershipId || referral.membershipId || "", paymentId: payment.id, benefitId: benefit.id, date: payment.date || referral.date || today, status: "Beneficio aprobado" });
+    app.data.referralBenefits.unshift(benefit);
+    return benefit;
+  }
+  function markReferralMembershipAttempt(payment) {
+    if (!payment || payment.itemType !== "Membresia") return;
+    const referral = app.data.referrals.find((item) => {
+      const client = linkReferralToClient(item);
+      return client?.id === payment.clientId && !["Beneficio aprobado", "Beneficio aplicado", "Cancelado", "Vencido"].includes(item.status);
+    });
+    if (!referral) return;
+    referral.referredClientId = payment.clientId;
+    referral.membershipId = byId("clients", payment.clientId)?.membershipId || referral.membershipId || "";
+    referral.paymentId = payment.id;
+    referral.date = payment.date || referral.date || today;
+    if (payment.status !== "Pagado") referral.status = "Membresia adquirida";
+  }
+  function cancelReferralBenefitsForPayment(paymentId) {
+    app.data.referralBenefits.filter((benefit) => benefit.paymentId === paymentId && benefit.status !== "Aplicado").forEach((benefit) => {
+      benefit.status = "Cancelado";
+      benefit.pendingAmount = 0;
+      const referral = byId("referrals", benefit.referralId);
+      if (referral && referral.status !== "Beneficio aplicado") referral.status = "Cancelado";
+    });
+    app.data.referrals.filter((referral) => referral.paymentId === paymentId && referral.status !== "Beneficio aplicado").forEach((referral) => {
+      referral.status = "Cancelado";
+    });
+  }
+  function addDays(date, days) {
+    const parsed = new Date(`${date}T00:00:00`);
+    parsed.setDate(parsed.getDate() + days);
+    return parsed.toISOString().slice(0, 10);
+  }
   function activeSeason(employee = null) {
     const active = app.data.evaluationSeasons.filter((season) => season.status === "Activa");
     if (employee) return active.find((season) => season.branchId === employee.branchId) || active.find((season) => season.branchId === "all") || app.data.evaluationSeasons[0];
@@ -271,8 +361,8 @@
   }
 
   function renderNav() {
-    const clientLabels = { dashboard: "Inicio", memberships: "Mi membresia", schedules: "Clases", reservations: "Mis reservas", coachPanel: "Coaching", store: "Menu / Tienda", payments: "Mis pagos y facturas", surveys: "Encuestas" };
-    const adminOrder = ["dashboard", "branches", "clients", "employees", "memberships", "access", "inventory", "schedules", "reservations", "store", "payments", "purchaseOrders", "maintenance", "staffMetrics", "reports", "settings"];
+    const clientLabels = { dashboard: "Inicio", memberships: "Mi membresia", referrals: "Referidos", schedules: "Clases", reservations: "Mis reservas", coachPanel: "Coaching", store: "Menu / Tienda", payments: "Mis pagos y facturas", surveys: "Encuestas" };
+    const adminOrder = ["dashboard", "branches", "clients", "employees", "memberships", "referrals", "access", "inventory", "schedules", "reservations", "store", "payments", "purchaseOrders", "maintenance", "staffMetrics", "reports", "settings"];
     let items = nav.filter(([id, , , permission]) => {
       if (app.user.role === "admin") return adminOrder.includes(id);
       if (app.user.role !== "client" && ["poolBoxing", "surveys"].includes(id)) return false;
@@ -289,7 +379,7 @@
   function render() {
     if (!can(nav.find((item) => item[0] === app.view)?.[3] || "dashboard")) app.view = "dashboard";
     renderNav();
-    const views = { dashboard, branches, clients, employees, memberships, access, inventory, schedules, reservations, coachPanel, poolBoxing, store, maintenance, purchaseOrders, payments, staffMetrics, reports, services, surveys, settings };
+    const views = { dashboard, branches, clients, employees, memberships, referrals, access, inventory, schedules, reservations, coachPanel, poolBoxing, store, maintenance, purchaseOrders, payments, staffMetrics, reports, services, surveys, settings };
     $("#content").innerHTML = (views[app.view] || dashboard)();
     window.lucide?.createIcons();
     setTimeout(renderCharts, 0);
@@ -533,6 +623,54 @@
       </section>`;
   }
 
+  function referrals() {
+    return app.user.role === "client" ? clientReferrals() : adminReferrals();
+  }
+
+  function clientReferrals() {
+    const client = byId("clients", app.user.clientId);
+    const code = client?.referralCode || referralCodeFor(client);
+    const myReferrals = app.data.referrals.filter((item) => item.referrerClientId === client?.id);
+    const benefits = app.data.referralBenefits.filter((item) => item.referrerClientId === client?.id);
+    const pending = referralBenefitTotal(client?.id);
+    return page("Referidos", "Codigo personal, personas referidas y beneficios pendientes.", button(`${icon("user-plus")} Registrar referido`, "open-referral", "primary")) +
+      `<section class="grid gap-4 xl:grid-cols-[.8fr_1.2fr]">
+        <article class="panel p-5"><div class="section-head"><div><h2>Codigo personal</h2><p>Compartelo para vincular nuevos registros.</p></div>${badge(referralProgram().status || "Activa")}</div><div class="mt-4 rounded-lg border border-line bg-slate-50 p-4 text-3xl font-black text-ink">${esc(code)}</div><div class="row-actions mt-4">${button(`${icon("copy")} Copiar codigo`, "copy-referral-code", "secondary", `data-code="${esc(code)}"`)}${button(`${icon("share-2")} Compartir`, "share-referral-code", "primary", `data-code="${esc(code)}"`)}</div><div class="info-box mt-4"><b>Saldo o descuento pendiente</b><span>${money(pending)} disponible para aplicar segun configuracion.</span></div><p class="mt-4 text-sm font-bold text-slate-600">${esc(demoReferralNote())}</p></article>
+        <article class="panel overflow-hidden"><div class="section-head p-5"><div><h2>Personas referidas</h2><p>El beneficio se genera solo despues de compra y pago aprobado.</p></div></div>${simpleTable(["Referido", "Sucursal", "Estado", "Pago", "Beneficio"], myReferrals.map((referral) => referralClientRow(referral)))}</article>
+      </section>
+      <section class="panel mt-5 overflow-hidden"><div class="section-head p-5"><div><h2>Beneficios obtenidos</h2><p>Historial con saldo pendiente, aplicado o cancelado.</p></div></div>${simpleTable(["Fecha", "Referido", "Tipo", "Monto", "Pendiente", "Estado"], benefits.map((benefit) => [benefit.generatedAt, clientName(benefit.referredClientId), benefit.type, money(benefit.amount), money(benefit.pendingAmount), badge(benefit.status)]))}</section>`;
+  }
+
+  function referralClientRow(referral) {
+    const benefit = referral.benefitId ? byId("referralBenefits", referral.benefitId) : app.data.referralBenefits.find((item) => item.referralId === referral.id);
+    return [`<b>${esc(referral.referredName)}</b><small>${esc(referral.referredPhone)} / ${esc(referral.referredEmail)}</small>`, branchName(referral.branchId), badge(referral.status), referral.paymentId ? byId("payments", referral.paymentId)?.receipt || referral.paymentId : "Pendiente", benefit ? `<b>${money(benefit.amount)}</b><small>${esc(benefit.type)}</small>` : "Pendiente"];
+  }
+
+  function adminReferrals() {
+    const f = app.filters.referrals || {};
+    const list = app.data.referrals.filter((referral) => {
+      if (f.branch && referral.branchId !== f.branch) return false;
+      if (f.status && referral.status !== f.status) return false;
+      if (f.from && referral.date < f.from) return false;
+      if (f.to && referral.date > f.to) return false;
+      if (f.plan) {
+        const payment = byId("payments", referral.paymentId);
+        if (payment?.planId !== f.plan) return false;
+      }
+      return true;
+    });
+    return page("Referidos", "Historial administrativo de referidos y beneficios generados.", button(`${icon("settings")} Configurar programa`, "open-referral-program", "primary")) +
+      `<section class="panel p-5"><div class="info-box mb-4"><b>${esc(demoReferralNote())}</b><span>La configuracion actual es editable y se guarda en LocalStorage.</span></div><div class="grid gap-3 lg:grid-cols-5"><select id="referralBranchFilter" class="form-control"><option value="">Todas las sucursales</option>${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), f.branch || "")}</select><select id="referralPlanFilter" class="form-control"><option value="">Todas las membresias</option>${options(app.data.plans.map((plan) => ({ value: plan.id, label: plan.name })), f.plan || "")}</select><input id="referralFromFilter" type="date" class="form-control" value="${esc(f.from || "")}"><input id="referralToFilter" type="date" class="form-control" value="${esc(f.to || "")}"><select id="referralStatusFilter" class="form-control"><option value="">Todos los estados</option>${options(referralStatusOptions(), f.status || "")}</select></div></section>
+      <section class="panel mt-5 overflow-hidden"><div class="table-wrap"><table><thead><tr><th>Cliente que refiere</th><th>Codigo</th><th>Persona referida</th><th>Sucursal</th><th>Membresia adquirida</th><th>Fecha</th><th>Pago</th><th>Beneficio</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${list.map(referralAdminRow).join("") || `<tr><td colspan="10" class="empty">Sin referidos para los filtros seleccionados.</td></tr>`}</tbody></table></div></section>`;
+  }
+
+  function referralAdminRow(referral) {
+    const payment = byId("payments", referral.paymentId);
+    const benefit = referral.benefitId ? byId("referralBenefits", referral.benefitId) : app.data.referralBenefits.find((item) => item.referralId === referral.id);
+    const actions = `${button(icon("eye"), "referral-detail", "icon-only", `data-id="${referral.id}" title="Ver"`)}${benefit && benefit.status === "Aprobado" ? button("Aplicar", "apply-referral-benefit", "success", `data-id="${benefit.id}"`) : ""}${!["Beneficio aplicado", "Cancelado", "Vencido"].includes(referral.status) ? button("Cancelar", "cancel-referral", "danger", `data-id="${referral.id}"`) : ""}`;
+    return `<tr><td>${clientName(referral.referrerClientId)}</td><td><b>${esc(referral.referralCode)}</b></td><td>${esc(referral.referredName)}<small>${esc(referral.referredPhone)} / ${esc(referral.referredEmail)}</small></td><td>${branchName(referral.branchId)}</td><td>${payment?.planId ? planName(payment.planId) : "Pendiente"}</td><td>${referral.date}</td><td>${payment ? `${esc(payment.receipt)}<small>${money(payment.amount)} / ${esc(payment.status)}</small>` : "Pendiente"}</td><td>${benefit ? `${money(benefit.amount)}<small>${esc(benefit.type)}</small>` : "Pendiente"}</td><td>${badge(referral.status)}</td><td><div class="row-actions">${actions}</div></td></tr>`;
+  }
+
   function inventory() {
     const tab = app.filters.inventoryTab || "areas";
     const branch = app.filters.inventoryBranch || "";
@@ -695,8 +833,10 @@
   }
 
   function settings() {
+    const program = referralProgram();
     return page("Configuracion", "Catalogos iniciales configurables del prototipo.") +
-      `<section class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">${["Coaching", "Natacion", "Boxeo", "Pesas", "Cardio", "Spinning", "Entrenamiento funcional"].map((type) => `<article class="panel p-5"><h2 class="font-black">${type}</h2><p class="mt-2 text-sm text-slate-600">Tipo de clase activo y configurable.</p></article>`).join("")}</section>`;
+      `<section class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">${["Coaching", "Natacion", "Boxeo", "Pesas", "Cardio", "Spinning", "Entrenamiento funcional"].map((type) => `<article class="panel p-5"><h2 class="font-black">${type}</h2><p class="mt-2 text-sm text-slate-600">Tipo de clase activo y configurable.</p></article>`).join("")}</section>
+      <section class="panel mt-5 p-5"><div class="section-head"><div><h2>Programa de referidos</h2><p>${esc(program.name || "Sin promocion")} / ${esc(program.status || "Borrador")}</p></div>${button(`${icon("pencil")} Editar`, "open-referral-program", "primary")}</div><div class="info-box mt-4"><b>${esc(demoReferralNote())}</b><span>Condicion: el referido debe comprar una membresia participante y el pago debe quedar aprobado.</span></div><dl class="detail-grid mt-4"><div><dt>Membresias participantes</dt><dd>${(program.participatingPlanIds || []).map(planName).join(", ") || "Todas"}</dd></div><div><dt>Vigencia</dt><dd>${esc(program.startDate || "")} al ${esc(program.endDate || "")}</dd></div><div><dt>Tipo de beneficio</dt><dd>${esc(program.benefitType || "")}</dd></div><div><dt>Monto</dt><dd>${referralBenefitLabel(program)}</dd></div><div><dt>Beneficiario</dt><dd>${esc(program.beneficiary || "")}</dd></div><div><dt>Maximo referidos</dt><dd>${program.maxReferrals || "Sin limite"}</dd></div><div><dt>Vigencia beneficio</dt><dd>${program.validityDays || 0} dias</dd></div><div><dt>Estado</dt><dd>${badge(program.status || "Borrador")}</dd></div></dl><p class="mt-4 text-sm text-slate-600">${esc(program.conditions || "")}</p></section>`;
   }
 
   function maintenance() {
@@ -726,7 +866,7 @@
   function payments() {
     const list = app.data.payments.filter((payment) => app.user.role !== "client" || payment.clientId === app.user.clientId);
     return page(app.user.role === "client" ? "Mis pagos y facturas" : "Ventas y pagos", "Pagos, ventas y facturacion electronica simulada.", app.user.role === "admin" ? button(`${icon("plus")} Registrar pago`, "open-payment", "primary") : "") +
-      `<section class="panel overflow-hidden"><div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Sucursal</th><th>Concepto</th><th>Monto</th><th>Fecha</th><th>Metodo</th><th>Factura</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${list.map((payment) => `<tr><td>${clientName(payment.clientId)}<small>${esc(payment.invoice?.email || "")}</small></td><td>${branchName(payment.branchId)}</td><td>${esc(payment.itemType || "Membresia")}<small>${payment.planId ? planName(payment.planId) : esc(payment.description || "")}</small></td><td>${money(payment.amount)}</td><td>${payment.date}</td><td>${esc(payment.method)}</td><td>${esc(payment.invoice?.series || "-")}-${esc(payment.invoice?.number || "-")}<small>${esc(payment.invoice?.status || "Pendiente de emision")}</small></td><td>${badge(payment.status)}</td><td><div class="row-actions">${button("Ver factura", "invoice-view", "secondary", `data-id="${payment.id}"`)}${button("Descargar", "invoice-download", "ghost", `data-id="${payment.id}"`)}${button("Enviar por correo", "invoice-send", "success", `data-id="${payment.id}"`)}</div></td></tr>`).join("")}</tbody></table></div></section>`;
+      `<section class="panel overflow-hidden"><div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Sucursal</th><th>Concepto</th><th>Monto</th><th>Fecha</th><th>Metodo</th><th>Factura</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${list.map((payment) => { const adminActions = isAdmin() ? `${payment.status !== "Pagado" ? button("Aprobar", "payment-status", "success", `data-id="${payment.id}" data-next="Pagado"`) : ""}${!["Anulado", "Reembolsado"].includes(payment.status) ? button("Anular", "payment-status", "danger", `data-id="${payment.id}" data-next="Anulado"`) : ""}` : ""; return `<tr><td>${clientName(payment.clientId)}<small>${esc(payment.invoice?.email || "")}</small></td><td>${branchName(payment.branchId)}</td><td>${esc(payment.itemType || "Membresia")}<small>${payment.planId ? planName(payment.planId) : esc(payment.description || "")}</small></td><td>${money(payment.amount)}</td><td>${payment.date}</td><td>${esc(payment.method)}</td><td>${esc(payment.invoice?.series || "-")}-${esc(payment.invoice?.number || "-")}<small>${esc(payment.invoice?.status || "Pendiente de emision")}</small></td><td>${badge(payment.status)}</td><td><div class="row-actions">${button("Ver factura", "invoice-view", "secondary", `data-id="${payment.id}"`)}${button("Descargar", "invoice-download", "ghost", `data-id="${payment.id}"`)}${button("Enviar por correo", "invoice-send", "success", `data-id="${payment.id}"`)}${adminActions}</div></td></tr>`; }).join("")}</tbody></table></div></section>`;
   }
 
   function reports() {
@@ -929,6 +1069,18 @@
     showModal("Registrar pago", `<form id="paymentForm" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Cliente</span><select id="paymentClient" class="form-control">${options(app.data.clients.map((client) => ({ value: client.id, label: client.name })))}</select></label><label class="form-field"><span>Sucursal</span><select id="paymentBranch" class="form-control">${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })))}</select></label><label class="form-field"><span>Plan</span><select id="paymentPlan" class="form-control">${options(app.data.plans.map((plan) => ({ value: plan.id, label: `${plan.name} / Q${plan.price}` })))}</select></label><label class="form-field"><span>Monto</span><input id="paymentAmount" type="number" class="form-control" value="320"></label><label class="form-field"><span>Fecha</span><input id="paymentDate" type="date" class="form-control" value="${today}"></label><label class="form-field"><span>Metodo</span><select id="paymentMethod" class="form-control">${options(["Efectivo", "Tarjeta", "Transferencia"])}</select></label><label class="form-field"><span>Comprobante</span><input id="paymentReceipt" class="form-control" value="FAC-${Math.floor(Math.random() * 9000) + 1000}"></label><label class="form-field"><span>Estado</span><select id="paymentStatus" class="form-control">${options(["Pendiente", "Pagado", "Rechazado", "Anulado"], "Pagado")}</select></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar pago</button></form>`);
   }
 
+  function referralForm() {
+    const client = app.user.role === "client" ? byId("clients", app.user.clientId) : app.data.clients[0];
+    const code = client?.referralCode || referralCodeFor(client);
+    showModal("Registrar referido", `<form id="referralForm" class="grid gap-4 md:grid-cols-2"><div class="info-box md:col-span-2"><b>${esc(demoReferralNote())}</b><span>Registrar a la persona no genera beneficio hasta que exista pago aprobado de membresia.</span></div><label class="form-field"><span>Nombre</span><input id="referralName" class="form-control" required></label><label class="form-field"><span>Telefono</span><input id="referralPhone" class="form-control" required></label><label class="form-field"><span>Correo</span><input id="referralEmail" type="email" class="form-control" required></label><label class="form-field"><span>Codigo del cliente que refiere</span><input id="referralCodeInput" class="form-control" value="${esc(code)}" required></label><label class="form-field md:col-span-2"><span>Sucursal de interes</span><select id="referralBranchInput" class="form-control">${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), client?.branchId || "b1")}</select></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar referido</button></form>`);
+  }
+
+  function referralProgramForm() {
+    if (!isAdmin()) return toast("Solo administracion puede configurar referidos.", "error");
+    const program = referralProgram();
+    showModal("Configurar programa de referidos", `<form id="referralProgramForm" class="grid gap-4 md:grid-cols-2"><div class="info-box md:col-span-2"><b>${esc(demoReferralNote())}</b><span>Estos valores son demostrativos y editables.</span></div><label class="form-field md:col-span-2"><span>Nombre de la promocion</span><input id="refProgramName" class="form-control" value="${esc(program.name || "")}" required></label><label class="form-field"><span>Fecha de inicio</span><input id="refProgramStart" type="date" class="form-control" value="${esc(program.startDate || today)}"></label><label class="form-field"><span>Fecha de finalizacion</span><input id="refProgramEnd" type="date" class="form-control" value="${esc(program.endDate || today)}"></label><label class="form-field"><span>Tipo de beneficio</span><select id="refProgramType" class="form-control">${options(benefitTypeOptions(), program.benefitType || "Saldo a favor")}</select></label><label class="form-field"><span>Monto</span><input id="refProgramAmount" type="number" class="form-control" value="${esc(program.amount || 10)}"></label><label class="form-field"><span>Beneficiario</span><select id="refProgramBeneficiary" class="form-control">${options(beneficiaryOptions(), program.beneficiary || "Cliente que refiere")}</select></label><label class="form-field"><span>Cantidad maxima de referidos</span><input id="refProgramMax" type="number" class="form-control" value="${esc(program.maxReferrals || 20)}"></label><label class="form-field"><span>Vigencia del beneficio (dias)</span><input id="refProgramValidity" type="number" class="form-control" value="${esc(program.validityDays || 30)}"></label><label class="form-field"><span>Estado</span><select id="refProgramStatus" class="form-control">${options(["Borrador", "Activa", "Pausada", "Finalizada", "Cancelada"], program.status || "Activa")}</select></label><label class="form-field md:col-span-2"><span>Membresias participantes</span><select id="refProgramPlans" class="form-control" multiple>${app.data.plans.map((plan) => `<option value="${plan.id}" ${(program.participatingPlanIds || []).includes(plan.id) ? "selected" : ""}>${esc(plan.name)}</option>`).join("")}</select></label><label class="form-field md:col-span-2"><span>Condiciones</span><textarea id="refProgramConditions" class="form-control" rows="4">${esc(program.conditions || "")}</textarea></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar programa</button></form>`);
+  }
+
   function updateReservationPreview() {
     const scheduleId = $("#reservationSchedule")?.value;
     if (!scheduleId) return;
@@ -940,7 +1092,7 @@
 
   function handleSubmit(event) {
     const form = event.target;
-    const managed = ["reservationForm", "planForm", "productForm", "branchForm", "clientForm", "employeeForm", "bonusForm", "areaForm", "machineForm", "maintenanceForm", "finishMaintenanceForm", "paymentForm", "purchaseOrderForm", "receivePurchaseOrderForm", "seasonForm", "surveyForm"];
+    const managed = ["reservationForm", "planForm", "productForm", "branchForm", "clientForm", "employeeForm", "bonusForm", "areaForm", "machineForm", "maintenanceForm", "finishMaintenanceForm", "paymentForm", "referralForm", "referralProgramForm", "purchaseOrderForm", "receivePurchaseOrderForm", "seasonForm", "surveyForm"];
     if (!managed.includes(form.id)) return;
     event.preventDefault();
     if (form.id === "reservationForm") return submitReservation();
@@ -955,6 +1107,8 @@
     if (form.id === "maintenanceForm") return submitMaintenance(form);
     if (form.id === "finishMaintenanceForm") return submitFinishMaintenance(form);
     if (form.id === "paymentForm") return submitPayment();
+    if (form.id === "referralForm") return submitReferral();
+    if (form.id === "referralProgramForm") return submitReferralProgram();
     if (form.id === "purchaseOrderForm") return submitPurchaseOrder(form);
     if (form.id === "receivePurchaseOrderForm") return submitReceivePurchaseOrder(form);
     if (form.id === "seasonForm") return submitSeason(form);
@@ -1018,11 +1172,17 @@
     const id = form.dataset.id;
     const client = id ? byId("clients", id) : { id: uid("c"), membershipId: uid("m"), currentAreaId: "" };
     Object.assign(client, { code: client.code || `CLI-${String(app.data.clients.length + 1).padStart(3, "0")}`, joinedAt: client.joinedAt || today, name: $("#clientName").value.trim(), email: $("#clientEmail").value.trim(), phone: $("#clientPhone").value.trim(), branchId: $("#clientBranch").value, status: $("#clientStatus").value, observations: client.observations || "Sin observaciones registradas." });
+    client.referralCode ||= referralCodeFor(client);
     if (!client.name || !client.email) return toast("Nombre y correo son obligatorios.", "error");
     if (!id) {
       app.data.clients.unshift(client);
       app.data.memberships.unshift({ id: client.membershipId, clientId: client.id, planId: $("#clientPlan").value, startDate: today, endDate: "2026-10-09", status: "Activa" });
     }
+    app.data.referrals.filter((referral) => !referral.referredClientId && (String(referral.referredEmail || "").toLowerCase() === client.email.toLowerCase() || String(referral.referredPhone || "").replace(/\D/g, "") === String(client.phone || "").replace(/\D/g, ""))).forEach((referral) => {
+      referral.referredClientId = client.id;
+      referral.membershipId = client.membershipId;
+      if (referral.status === "Registrado") referral.status = "Membresia pendiente";
+    });
     window.GymReservations.audit(app.data, app.user, "Clientes", id ? "Editar cliente" : "Registrar cliente", client.name);
     save(); closeModal(); render(); toast("Cliente guardado.");
   }
@@ -1139,8 +1299,44 @@
     const payment = { id: uid("pay"), clientId: client.id, branchId: $("#paymentBranch").value, itemType: "Membresia", planId: $("#paymentPlan").value, amount: Number($("#paymentAmount").value), date: $("#paymentDate").value, method: $("#paymentMethod").value, receipt: $("#paymentReceipt").value, status: $("#paymentStatus").value };
     payment.invoice = createInvoice(payment, client, payment.status === "Pagado" ? "Emitida" : "Pendiente de emision");
     app.data.payments.unshift(payment);
+    markReferralMembershipAttempt(payment);
+    const benefit = generateReferralBenefit(payment);
     window.GymReservations.audit(app.data, app.user, "Pagos", "Registrar pago", $("#paymentReceipt").value);
-    save(); closeModal(); render(); toast("Pago registrado y factura simulada creada.");
+    save(); closeModal(); render(); toast(benefit ? "Pago registrado, factura simulada y beneficio de referido generado." : "Pago registrado y factura simulada creada.");
+  }
+
+  function submitReferral() {
+    const name = $("#referralName").value.trim();
+    const phone = $("#referralPhone").value.trim();
+    const email = $("#referralEmail").value.trim().toLowerCase();
+    const code = $("#referralCodeInput").value.trim();
+    const referrer = app.data.clients.find((client) => client.referralCode.toLowerCase() === code.toLowerCase());
+    if (!name || !phone || !email || !code) return toast("Completa nombre, telefono, correo y codigo.", "error");
+    if (!referrer) return toast("Codigo de referido no encontrado.", "error");
+    if (app.user.role === "client" && referrer.id !== app.user.clientId) return toast("Usa tu propio codigo para registrar referidos.", "error");
+    const samePerson = String(referrer.email || "").toLowerCase() === email || String(referrer.phone || "").replace(/\D/g, "") === phone.replace(/\D/g, "");
+    if (samePerson) return toast("No puedes utilizar tu propio codigo como referido.", "error");
+    const existingClient = app.data.clients.find((client) => String(client.email || "").toLowerCase() === email || String(client.phone || "").replace(/\D/g, "") === phone.replace(/\D/g, ""));
+    if (existingClient?.id === referrer.id) return toast("No puedes referirte a ti mismo.", "error");
+    const duplicated = app.data.referrals.some((referral) => {
+      const linked = linkReferralToClient(referral);
+      return String(referral.referredEmail || "").toLowerCase() === email || String(referral.referredPhone || "").replace(/\D/g, "") === phone.replace(/\D/g, "") || (existingClient && linked?.id === existingClient.id);
+    });
+    if (duplicated) return toast("Esta persona ya esta asociada a un referido.", "error");
+    const referral = { id: uid("ref"), referrerClientId: referrer.id, referralCode: referrer.referralCode, referredClientId: existingClient?.id || "", referredName: name, referredPhone: phone, referredEmail: email, branchId: $("#referralBranchInput").value, membershipId: existingClient?.membershipId || "", paymentId: "", benefitId: "", date: today, status: existingClient ? "Membresia pendiente" : "Registrado" };
+    app.data.referrals.unshift(referral);
+    window.GymReservations.audit(app.data, app.user, "Referidos", "Registrar referido", `${referrer.name} -> ${name}`);
+    save(); closeModal(); render(); toast("Referido registrado. El beneficio queda pendiente hasta pago aprobado.");
+  }
+
+  function submitReferralProgram() {
+    if (!isAdmin()) return toast("Solo administracion puede configurar referidos.", "error");
+    const selectedPlans = Array.from($("#refProgramPlans").selectedOptions).map((option) => option.value);
+    Object.assign(app.data.referralProgram, { name: $("#refProgramName").value.trim(), participatingPlanIds: selectedPlans, startDate: $("#refProgramStart").value, endDate: $("#refProgramEnd").value, benefitType: $("#refProgramType").value, amount: Number($("#refProgramAmount").value), beneficiary: $("#refProgramBeneficiary").value, maxReferrals: Number($("#refProgramMax").value), validityDays: Number($("#refProgramValidity").value), conditions: $("#refProgramConditions").value.trim(), status: $("#refProgramStatus").value });
+    if (!app.data.referralProgram.name) return toast("El nombre de la promocion es obligatorio.", "error");
+    if (app.data.referralProgram.startDate > app.data.referralProgram.endDate) return toast("La fecha inicial no puede ser mayor que la final.", "error");
+    window.GymReservations.audit(app.data, app.user, "Referidos", "Configurar programa", app.data.referralProgram.name);
+    save(); closeModal(); render(); toast("Programa de referidos guardado.");
   }
 
   function submitPurchaseOrder(form) {
@@ -1202,6 +1398,8 @@
     if (action === "open-machine") return isAdmin() ? machineForm(id ? byId("machines", id) : {}) : toast("Solo administracion puede editar maquinas.", "error");
     if (action === "open-maintenance") return maintenanceForm(id ? byId("maintenance", id) : {});
     if (action === "open-payment") return isAdmin() ? paymentForm() : toast("Solo administracion puede registrar pagos.", "error");
+    if (action === "open-referral") return referralForm();
+    if (action === "open-referral-program") return referralProgramForm();
     if (action === "open-purchase-order") return purchaseOrderForm(id ? byId("purchaseOrders", id) : {});
     if (action === "go-staff-metrics") { app.view = "staffMetrics"; return render(); }
     if (action === "inventory-tab") { app.filters.inventoryTab = el.dataset.tab; return render(); }
@@ -1221,6 +1419,12 @@
     if (action === "machine-status") return changeMachineStatus(id, el.dataset.next);
     if (action === "reservation-status" || action === "cancel-reservation") return updateReservationStatus(action, id, el.dataset.next);
     if (action === "membership-status") return updateMembershipStatus(id, el.dataset.next);
+    if (action === "payment-status") return updatePaymentStatus(id, el.dataset.next);
+    if (action === "copy-referral-code") return copyReferralCode(el.dataset.code);
+    if (action === "share-referral-code") return shareReferralCode(el.dataset.code);
+    if (action === "referral-detail") return referralDetail(id);
+    if (action === "apply-referral-benefit") return applyReferralBenefit(id);
+    if (action === "cancel-referral") return cancelReferral(id);
     if (action === "plan-status") return togglePlan(id);
     if (action === "delete-plan") return deletePlan(id);
     if (action === "cart-add") return addToCart(id);
@@ -1543,6 +1747,66 @@
     save(); render(); toast("Membresia actualizada.");
   }
 
+  function updatePaymentStatus(id, next) {
+    if (!isAdmin()) return toast("Solo administracion puede cambiar pagos.", "error");
+    const payment = byId("payments", id);
+    payment.status = next;
+    markReferralMembershipAttempt(payment);
+    if (next === "Pagado") {
+      payment.invoice ||= createInvoice(payment, byId("clients", payment.clientId), "Emitida");
+      payment.invoice.status = payment.invoice.status === "Pendiente de emision" ? "Emitida" : payment.invoice.status;
+      const benefit = generateReferralBenefit(payment);
+      save(); render(); return toast(benefit ? "Pago aprobado y beneficio de referido generado." : "Pago aprobado.");
+    }
+    if (["Anulado", "Reembolsado", "Rechazado"].includes(next)) cancelReferralBenefitsForPayment(id);
+    save(); render(); toast("Estado de pago actualizado.");
+  }
+
+  function copyReferralCode(code) {
+    navigator.clipboard?.writeText(code).then(() => toast("Codigo copiado.")).catch(() => toast(`Codigo: ${code}`));
+  }
+
+  function shareReferralCode(code) {
+    const text = `Usa mi codigo ${code} para registrarte en Renovatio Gym.`;
+    if (navigator.share) navigator.share({ title: "Codigo de referido Renovatio Gym", text }).catch(() => {});
+    else copyReferralCode(code);
+    toast("Opcion de compartir preparada.");
+  }
+
+  function referralDetail(id) {
+    const referral = byId("referrals", id);
+    const benefit = referral.benefitId ? byId("referralBenefits", referral.benefitId) : app.data.referralBenefits.find((item) => item.referralId === id);
+    const payment = byId("payments", referral.paymentId);
+    showModal("Detalle de referido", `<dl class="detail-grid"><div><dt>Cliente que refiere</dt><dd>${clientName(referral.referrerClientId)}</dd></div><div><dt>Codigo</dt><dd>${esc(referral.referralCode)}</dd></div><div><dt>Persona referida</dt><dd>${esc(referral.referredName)}</dd></div><div><dt>Contacto</dt><dd>${esc(referral.referredPhone)}<small>${esc(referral.referredEmail)}</small></dd></div><div><dt>Sucursal</dt><dd>${branchName(referral.branchId)}</dd></div><div><dt>Fecha</dt><dd>${referral.date}</dd></div><div><dt>Pago relacionado</dt><dd>${payment ? `${esc(payment.receipt)} / ${money(payment.amount)} / ${esc(payment.status)}` : "Pendiente"}</dd></div><div><dt>Estado</dt><dd>${badge(referral.status)}</dd></div></dl><h3 class="mt-5 font-black">Beneficio generado</h3>${benefit ? simpleTable(["Tipo", "Monto", "Pendiente", "Beneficiario", "Estado", "Vence"], [[benefit.type, money(benefit.amount), money(benefit.pendingAmount), benefit.beneficiary, badge(benefit.status), benefit.expiresAt || "Sin fecha"]]) : `<p class="empty mt-3">Aun no hay beneficio porque falta compra y pago aprobado.</p>`}<p class="mt-4 text-sm font-bold text-slate-600">${esc(demoReferralNote())}</p>`);
+  }
+
+  function applyReferralBenefit(id) {
+    if (!isAdmin()) return toast("Solo administracion puede aplicar beneficios.", "error");
+    const benefit = byId("referralBenefits", id);
+    if (!benefit || benefit.status !== "Aprobado") return toast("El beneficio no esta disponible para aplicar.", "error");
+    const nextPayment = app.data.payments.find((payment) => payment.clientId === benefit.referrerClientId && payment.status === "Pendiente");
+    const applied = Math.min(Number(benefit.pendingAmount || benefit.amount || 0), Number(nextPayment?.amount || benefit.pendingAmount || benefit.amount || 0));
+    benefit.status = "Aplicado";
+    benefit.pendingAmount = 0;
+    benefit.appliedAt = today;
+    benefit.appliedPaymentId = nextPayment?.id || "";
+    const referral = byId("referrals", benefit.referralId);
+    if (referral) referral.status = "Beneficio aplicado";
+    window.GymReservations.audit(app.data, app.user, "Referidos", "Aplicar beneficio", `${clientName(benefit.referrerClientId)} / ${money(applied)}`);
+    save(); render(); toast(`Beneficio aplicado por ${money(applied)}.`);
+  }
+
+  function cancelReferral(id) {
+    if (!isAdmin()) return toast("Solo administracion puede cancelar referidos.", "error");
+    const referral = byId("referrals", id);
+    referral.status = "Cancelado";
+    app.data.referralBenefits.filter((benefit) => benefit.referralId === id && benefit.status !== "Aplicado").forEach((benefit) => {
+      benefit.status = "Cancelado";
+      benefit.pendingAmount = 0;
+    });
+    save(); render(); toast("Referido cancelado.");
+  }
+
   function maintenanceDetail(id) {
     const item = byId("maintenance", id);
     showModal("Detalle de mantenimiento", `<dl class="detail-grid"><div><dt>Maquina</dt><dd>${machineName(item.machineId)}</dd></div><div><dt>Tipo</dt><dd>${esc(item.type)}</dd></div><div><dt>Estado</dt><dd>${badge(item.status)}</dd></div><div><dt>Tecnico</dt><dd>${esc(item.technician)}</dd></div><div><dt>Costo</dt><dd>Q${item.finalCost || item.cost}</dd></div><div><dt>Resultado</dt><dd>${esc(item.result || "Pendiente")}</dd></div></dl><p class="mt-4 text-sm text-slate-600">${esc(item.description)}</p>`);
@@ -1627,6 +1891,12 @@
       app.filters.purchaseOrders[poMap[id]] = value;
       return render();
     }
+    const referralMap = { referralBranchFilter: "branch", referralPlanFilter: "plan", referralFromFilter: "from", referralToFilter: "to", referralStatusFilter: "status" };
+    if (referralMap[id]) {
+      app.filters.referrals = app.filters.referrals || {};
+      app.filters.referrals[referralMap[id]] = value;
+      return render();
+    }
   }
 
   function chartValuesBy(items, labels, keyFn, valueFn = () => 1) {
@@ -1663,9 +1933,10 @@
   function normalizeData(data) {
     const seed = window.GYM_SEED || {};
     const clone = (value) => window.GymStorage?.clone ? window.GymStorage.clone(value) : JSON.parse(JSON.stringify(value));
-    ["users", "branches", "plans", "clients", "trainers", "employees", "staffMetrics", "evaluationSeasons", "satisfactionSurveys", "areas", "machines", "memberships", "schedules", "reservations", "maintenance", "payments", "purchaseOrders", "products", "partners", "services", "carts", "dailyReports", "audit"].forEach((key) => {
+    ["users", "branches", "plans", "clients", "trainers", "employees", "staffMetrics", "evaluationSeasons", "satisfactionSurveys", "areas", "machines", "memberships", "schedules", "reservations", "maintenance", "payments", "referrals", "referralBenefits", "purchaseOrders", "products", "partners", "services", "carts", "dailyReports", "audit"].forEach((key) => {
       if (!Array.isArray(data[key])) data[key] = clone(seed[key] || []);
     });
+    if (!data.referralProgram) data.referralProgram = clone(seed.referralProgram || { id: "refprog-demo", name: "Referidos Basica demo", participatingPlanIds: ["p-basica"], startDate: "2026-09-01", endDate: "2026-12-31", benefitType: "Saldo a favor", amount: 10, beneficiary: "Cliente que refiere", maxReferrals: 20, validityDays: 30, conditions: "El referido debe adquirir y pagar una membresia participante. Estado del requisito: pendiente de validacion con el cliente.", status: "Activa" });
     (seed.evaluationSeasons || []).forEach((season) => {
       if (!data.evaluationSeasons.some((item) => item.id === season.id)) data.evaluationSeasons.push(clone(season));
     });
@@ -1696,8 +1967,32 @@
     });
     data.clients.forEach((client, index) => {
       client.code ||= `CLI-${String(index + 1).padStart(3, "0")}`;
+      client.referralCode ||= referralCodeFor(client);
       client.joinedAt ||= today;
       client.observations ||= "Sin observaciones registradas.";
+    });
+    const usedCodes = new Set();
+    data.clients.forEach((client, index) => {
+      let code = client.referralCode || referralCodeFor(client);
+      while (usedCodes.has(code)) code = `${referralCodeFor(client)}-${index + 1}`;
+      client.referralCode = code;
+      usedCodes.add(code);
+    });
+    data.referrals.forEach((referral) => {
+      referral.status ||= "Invitado";
+      referral.date ||= today;
+      referral.referralCode ||= window.GymRules.byId(data, "clients", referral.referrerClientId)?.referralCode || referral.referralCode || "";
+      if (!referral.referredClientId) {
+        const email = String(referral.referredEmail || "").toLowerCase();
+        const phone = String(referral.referredPhone || "").replace(/\D/g, "");
+        const client = data.clients.find((item) => (email && String(item.email || "").toLowerCase() === email) || (phone && String(item.phone || "").replace(/\D/g, "") === phone));
+        if (client) referral.referredClientId = client.id;
+      }
+    });
+    data.referralBenefits.forEach((benefit) => {
+      benefit.pendingAmount ??= benefit.status === "Aplicado" ? 0 : benefit.amount;
+      benefit.beneficiary ||= data.referralProgram.beneficiary;
+      benefit.type ||= data.referralProgram.benefitType;
     });
     data.branches.forEach((branch, index) => {
       branch.code ||= index === 0 ? "Z10" : `SUC-${index + 1}`;
