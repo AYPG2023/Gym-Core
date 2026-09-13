@@ -96,6 +96,14 @@
 
   function isAdmin() { return app.user?.role === "admin"; }
 
+  function canManageCertificates() {
+    return isAdmin() || ["Compras", "Inventario"].includes(app.user?.area);
+  }
+
+  function canReviewCertificates() {
+    return isAdmin() || app.user?.canReviewCertificates;
+  }
+
   function icon(name, cls = "h-4 w-4") {
     return `<i data-lucide="${name}" class="${cls}"></i>`;
   }
@@ -715,7 +723,7 @@
   }
 
   function machineInventory(machines) {
-    return `<section class="panel mt-5 overflow-hidden"><div class="table-wrap"><table><thead><tr><th>Codigo</th><th>Maquina</th><th>Tipo</th><th>Sucursal</th><th>Area</th><th>Marca / Modelo</th><th>Capacidad</th><th>Mantenimiento</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${machines.map((machine) => { const adminActions = isAdmin() ? `${button(icon("pencil"), "open-machine", "icon-only", `data-id="${machine.id}" title="Editar"`)}${machineActions(machine)}${button("Ver mantenimientos", "machine-maintenance", "secondary", `data-id="${machine.id}"`)}` : ""; return `<tr><td><b>${esc(machine.code)}</b></td><td>${esc(machine.name)}</td><td>${esc(machine.type)}</td><td>${branchName(branchOfMachine(machine))}</td><td>${areaName(machine.areaId)}</td><td>${esc(machine.brand)}<small>${esc(machine.model)}</small></td><td>${machine.simultaneousCapacity}</td><td>${machine.lastMaintenance}<small>Proximo ${machine.nextMaintenance}</small></td><td>${badge(machine.status)}</td><td><div class="row-actions">${button(icon("eye"), "machine-detail", "icon-only", `data-id="${machine.id}" title="Ver"`)}${adminActions}</div></td></tr>`; }).join("") || `<tr><td colspan="10" class="empty">No hay maquinas con estos filtros.</td></tr>`}</tbody></table></div></section>`;
+    return `<section class="panel mt-5 overflow-hidden"><div class="table-wrap"><table class="machine-table"><thead><tr><th>Codigo</th><th>Maquina</th><th>Sucursal / Area</th><th>Marca / Modelo</th><th>Capacidad</th><th>Documentacion</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${machines.map((machine) => { const adminActions = isAdmin() ? `${button(icon("pencil"), "open-machine", "icon-only", `data-id="${machine.id}" title="Editar"`)}${machineActions(machine)}${button("Mantenimientos", "machine-maintenance", "secondary", `data-id="${machine.id}"`)}` : ""; return `<tr><td><b>${esc(machine.code)}</b><small>${esc(machine.type)}</small></td><td>${esc(machine.name)}</td><td>${branchName(branchOfMachine(machine))}<small>${areaName(machine.areaId)}</small></td><td>${esc(machine.brand)}<small>${esc(machine.model)}</small></td><td>${machine.simultaneousCapacity}</td><td>${machineDocumentationCell(machine)}</td><td>${badge(machine.status)}</td><td><div class="row-actions">${button(icon("eye"), "machine-detail", "icon-only", `data-id="${machine.id}" title="Ver"`)}${adminActions}</div></td></tr>`; }).join("") || `<tr><td colspan="8" class="empty">No hay maquinas con estos filtros.</td></tr>`}</tbody></table></div></section>`;
   }
 
   function machineActions(machine) {
@@ -724,15 +732,71 @@
     return allowed.slice(0, 2).map((next) => button(next, "machine-status", next === "En mantenimiento" ? "warning" : "secondary", `data-id="${machine.id}" data-next="${next}"`)).join("");
   }
 
+  function normalizeCertificate(machine) {
+    machine.certificate ||= {};
+    const cert = machine.certificate;
+    cert.status ||= "Pendiente";
+    cert.number ||= cert.certificateNumber || "";
+    cert.issuer ||= "";
+    cert.issuedAt ||= "";
+    cert.expiresAt ||= "";
+    cert.fileName ||= "";
+    cert.fileType ||= fileTypeFromName(cert.fileName);
+    cert.observations ||= "";
+    cert.purchaseOrderId ||= machine.purchaseOrderId || "";
+    cert.history ||= [];
+    if (cert.status === "Aprobado" && cert.expiresAt && cert.expiresAt < today) cert.status = "Vencido";
+    return cert;
+  }
+
+  function fileTypeFromName(fileName) {
+    const ext = String(fileName || "").split(".").pop().toLowerCase();
+    if (ext === "pdf") return "PDF";
+    if (["jpg", "jpeg"].includes(ext)) return "JPG";
+    if (ext === "png") return "PNG";
+    return "";
+  }
+
+  function certificateIsApproved(machine) {
+    const cert = normalizeCertificate(machine);
+    return cert.status === "Aprobado" && (!cert.expiresAt || cert.expiresAt >= today);
+  }
+
+  function applyCertificateRules(machine) {
+    const cert = normalizeCertificate(machine);
+    if (cert.status === "Aprobado" && cert.expiresAt && cert.expiresAt < today) cert.status = "Vencido";
+    if (machine.status === "Operativo" && !certificateIsApproved(machine)) {
+      machine.status = "Pendiente de documentacion";
+      return false;
+    }
+    return true;
+  }
+
+  function certificateActionLabel(machine) {
+    const cert = normalizeCertificate(machine);
+    if (cert.status === "Aprobado" || cert.status === "En revision" || cert.status === "Cargado") return cert.fileName ? "Ver" : "Cargar";
+    if (cert.status === "Rechazado") return "Reemplazar";
+    if (cert.status === "Vencido") return "Renovar";
+    return "Cargar";
+  }
+
+  function machineDocumentationCell(machine) {
+    const cert = normalizeCertificate(machine);
+    const action = cert.fileName ? "certificate-view" : "open-machine-certificate";
+    return `<div class="doc-cell">${badge(cert.status)}<span class="doc-file">${icon("file-text")}<small>${esc(cert.fileName || "Sin archivo")}</small></span>${button(certificateActionLabel(machine), action, cert.fileName ? "ghost" : "secondary", `data-id="${machine.id}"`)}</div><small>Mant. ${esc(machine.lastMaintenance || "-")} / ${esc(machine.nextMaintenance || "-")}</small>`;
+  }
+
   function schedules() {
-    return page("Horarios y disponibilidad", "Calendario de bloques con cupos, ocupacion y colores por estado.", can("reservations") ? button(`${icon("plus")} Reservar`, "open-reservation", "primary") : "") +
+    const actions = `${isAdmin() ? button(`${icon("plus")} Nueva clase`, "open-schedule", "primary") : ""}${can("reservations") ? button(`${icon("calendar-plus")} Reservar`, "open-reservation", isAdmin() ? "secondary" : "primary") : ""}`;
+    return page("Horarios y disponibilidad", "Calendario de bloques con cupos, ocupacion y colores por estado.", actions) +
       `<section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">${app.data.schedules.map(scheduleCard).join("")}</section>`;
   }
 
   function scheduleCard(schedule) {
     const spaces = window.GymRules.availability(app.data, schedule.id);
     const color = spaces.state === "Disponible" ? "green" : spaces.state === "Pocos cupos" ? "yellow" : "red";
-    return `<article class="panel schedule-card ${color} p-5"><div class="section-head"><div><h2>${esc(schedule.type || areaName(schedule.areaId))}</h2><p>${branchName(schedule.branchId)} / ${areaName(schedule.areaId)}</p></div>${badge(spaces.state)}</div><div class="mt-4 flex items-center gap-3 text-ink"><span class="time-chip">${schedule.start}</span><span>al</span><span class="time-chip">${schedule.end}</span></div><dl class="detail-grid mt-4"><div><dt>Fecha</dt><dd>${schedule.date}</dd></div><div><dt>Coach</dt><dd>${trainerName(schedule.trainerId)}</dd></div><div><dt>Duracion</dt><dd>${schedule.durationMinutes || 60} min</dd></div><div><dt>Cupo</dt><dd>${schedule.capacity}</dd></div><div><dt>Inscritos</dt><dd>${spaces.reserved}</dd></div><div><dt>Disponibles</dt><dd>${spaces.available}/${spaces.total}</dd></div></dl><div class="mt-4 h-2 rounded-full bg-slate-200"><span class="block h-2 rounded-full" style="width:${spaces.percent}%; background: var(--schedule-color)"></span></div></article>`;
+    const adminActions = isAdmin() ? `<div class="row-actions mt-4">${button(icon("pencil"), "open-schedule", "icon-only", `data-id="${schedule.id}" title="Editar clase"`)}${button("Participantes", "class-participants", "secondary", `data-id="${schedule.id}"`)}</div>` : "";
+    return `<article class="panel schedule-card ${color} p-5"><div class="section-head"><div><h2>${esc(schedule.type || areaName(schedule.areaId))}</h2><p>${branchName(schedule.branchId)} / ${areaName(schedule.areaId)}</p></div>${badge(spaces.state)}</div><div class="mt-4 flex items-center gap-3 text-ink"><span class="time-chip">${schedule.start}</span><span>al</span><span class="time-chip">${schedule.end}</span></div><dl class="detail-grid mt-4"><div><dt>Fecha</dt><dd>${schedule.date}</dd></div><div><dt>Coach</dt><dd>${trainerName(schedule.trainerId)}</dd></div><div><dt>Duracion</dt><dd>${schedule.durationMinutes || 60} min</dd></div><div><dt>Cupo</dt><dd>${schedule.capacity}</dd></div><div><dt>Inscritos</dt><dd>${spaces.reserved}</dd></div><div><dt>Disponibles</dt><dd>${spaces.available}/${spaces.total}</dd></div></dl><div class="mt-4 h-2 rounded-full bg-slate-200"><span class="block h-2 rounded-full" style="width:${spaces.percent}%; background: var(--schedule-color)"></span></div>${adminActions}</article>`;
   }
 
   function reservations() {
@@ -969,6 +1033,13 @@
     updateReservationPreview();
   }
 
+  function scheduleForm(schedule = {}) {
+    if (!isAdmin()) return toast("Solo administracion puede crear o editar clases.", "error");
+    const selectedAreaId = schedule.areaId || app.data.areas[0]?.id || "";
+    const selectedBranchId = schedule.branchId || byId("areas", selectedAreaId)?.branchId || app.data.branches[0]?.id || "";
+    showModal(schedule.id ? "Editar clase / horario" : "Nueva clase / horario", `<form id="scheduleForm" data-id="${esc(schedule.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Tipo de clase</span><select id="scheduleType" class="form-control">${options(["Cardio", "Pesas", "Natacion", "Boxeo", "Spinning", "Entrenamiento funcional", "Coaching"], schedule.type || "Cardio")}</select></label><label class="form-field"><span>Estado</span><select id="scheduleStatus" class="form-control">${options(["Disponible", "En curso", "Completada", "Cancelada", "Cerrado"], schedule.status || "Disponible")}</select></label><label class="form-field"><span>Sucursal</span><select id="scheduleBranch" class="form-control">${options(app.data.branches.map((branch) => ({ value: branch.id, label: branch.name })), selectedBranchId)}</select></label><label class="form-field"><span>Area</span><select id="scheduleArea" class="form-control">${options(app.data.areas.map((area) => ({ value: area.id, label: `${area.name} / ${branchName(area.branchId)}` })), selectedAreaId)}</select></label><label class="form-field"><span>Coach</span><select id="scheduleTrainer" class="form-control">${options(app.data.trainers.map((trainer) => ({ value: trainer.id, label: `${trainer.name} / ${trainer.specialty}` })), schedule.trainerId || app.data.trainers[0]?.id)}</select></label><label class="form-field"><span>Fecha</span><input id="scheduleDate" type="date" class="form-control" value="${esc(schedule.date || today)}"></label><label class="form-field"><span>Inicio</span><input id="scheduleStart" type="time" class="form-control" value="${esc(schedule.start || "06:00")}"></label><label class="form-field"><span>Fin</span><input id="scheduleEnd" type="time" class="form-control" value="${esc(schedule.end || "07:00")}"></label><label class="form-field"><span>Duracion minutos</span><input id="scheduleDuration" type="number" min="15" step="15" class="form-control" value="${esc(schedule.durationMinutes || 60)}"></label><label class="form-field"><span>Cupo</span><input id="scheduleCapacity" type="number" min="1" class="form-control" value="${esc(schedule.capacity || 10)}"></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar clase</button></form>`);
+  }
+
   function dailyReport() {
     const rows = app.data.dailyReports.map((report) => [report.date, branchName(report.branchId), report.attendedUsers, `${report.averageMinutes} min`, report.peakHour, report.membershipsSold, report.productsSold, report.partnerServiceSales, report.swimmingAttendance, report.boxingAttendance, money(report.totalIncome), report.accessWarnings, report.emailStatus]);
     return `<section class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">${metric("Reportes guardados", app.data.dailyReports.length, "persisten aunque falle el correo", "save", "green")}${metric("Asistencias", app.data.dailyReports.reduce((s, r) => s + r.attendedUsers, 0), "usuarios que asistieron", "user-check", "blue")}${metric("Ingresos diarios", money(app.data.dailyReports.reduce((s, r) => s + r.totalIncome, 0)), "total consolidado", "wallet", "green")}${metric("Advertencias", app.data.dailyReports.reduce((s, r) => s + r.accessWarnings, 0), "accesos sin salida", "triangle-alert", "yellow")}</section><section class="panel mt-5 overflow-hidden">${simpleTable(["Fecha", "Sucursal", "Asistieron", "Tiempo prom.", "Hora pico", "Membresias", "Productos", "Servicios", "Natacion", "Boxeo", "Ingresos", "Sin salida", "Correo"], rows)}</section>`;
@@ -1054,7 +1125,20 @@
   }
 
   function machineForm(machine = {}) {
-    showModal(machine.id ? "Editar equipo" : "Nuevo equipo", `<form id="machineForm" data-id="${esc(machine.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Codigo</span><input id="machineCode" class="form-control" value="${esc(machine.code || "")}" required></label><label class="form-field"><span>Nombre</span><input id="machineName" class="form-control" value="${esc(machine.name || "")}" required></label><label class="form-field"><span>Tipo</span><input id="machineType" class="form-control" value="${esc(machine.type || "")}" required></label><label class="form-field"><span>Area</span><select id="machineArea" class="form-control">${options(app.data.areas.map((area) => ({ value: area.id, label: `${area.name} / ${branchName(area.branchId)}` })), machine.areaId || "a-cardio")}</select></label><label class="form-field"><span>Marca</span><input id="machineBrand" class="form-control" value="${esc(machine.brand || "")}"></label><label class="form-field"><span>Modelo</span><input id="machineModel" class="form-control" value="${esc(machine.model || "")}"></label><label class="form-field"><span>Capacidad operativa</span><input id="machineCapacity" type="number" class="form-control" value="${esc(machine.simultaneousCapacity || 1)}"></label><label class="form-field"><span>Estado</span><select id="machineStatus" class="form-control">${options(["Operativo", "En mantenimiento", "Danado", "Fuera de servicio", "Retirado", "Pendiente de documentacion"], machine.status || "Pendiente de documentacion")}</select></label><label class="form-field"><span>Ultimo mantenimiento</span><input id="machineLast" type="date" class="form-control" value="${esc(machine.lastMaintenance || "2026-09-01")}"></label><label class="form-field"><span>Proximo mantenimiento</span><input id="machineNext" type="date" class="form-control" value="${esc(machine.nextMaintenance || "2026-10-01")}"></label><label class="form-field md:col-span-2"><span>Observaciones / certificado</span><textarea id="machineNotes" class="form-control" rows="2">${esc(machine.notes || "")}</textarea></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar equipo</button></form>`);
+    const cert = normalizeCertificate(machine);
+    showModal(machine.id ? "Editar equipo" : "Nuevo equipo", `<form id="machineForm" data-id="${esc(machine.id || "")}" class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Codigo</span><input id="machineCode" class="form-control" value="${esc(machine.code || "")}" required></label><label class="form-field"><span>Nombre</span><input id="machineName" class="form-control" value="${esc(machine.name || "")}" required></label><label class="form-field"><span>Tipo</span><input id="machineType" class="form-control" value="${esc(machine.type || "")}" required></label><label class="form-field"><span>Area</span><select id="machineArea" class="form-control">${options(app.data.areas.map((area) => ({ value: area.id, label: `${area.name} / ${branchName(area.branchId)}` })), machine.areaId || "a-cardio")}</select></label><label class="form-field"><span>Marca</span><input id="machineBrand" class="form-control" value="${esc(machine.brand || "")}"></label><label class="form-field"><span>Modelo</span><input id="machineModel" class="form-control" value="${esc(machine.model || "")}"></label><label class="form-field"><span>Capacidad operativa</span><input id="machineCapacity" type="number" class="form-control" value="${esc(machine.simultaneousCapacity || 1)}"></label><label class="form-field"><span>Estado</span><select id="machineStatus" class="form-control">${options(["Operativo", "En mantenimiento", "Danado", "Fuera de servicio", "Retirado", "Pendiente de documentacion"], machine.status || "Pendiente de documentacion")}</select></label><label class="form-field"><span>Ultimo mantenimiento</span><input id="machineLast" type="date" class="form-control" value="${esc(machine.lastMaintenance || "2026-09-01")}"></label><label class="form-field"><span>Proximo mantenimiento</span><input id="machineNext" type="date" class="form-control" value="${esc(machine.nextMaintenance || "2026-10-01")}"></label><label class="form-field md:col-span-2"><span>Observaciones</span><textarea id="machineNotes" class="form-control" rows="2">${esc(machine.notes || "")}</textarea></label><fieldset class="form-section md:col-span-2"><legend>Certificado de calidad</legend><div class="grid gap-4 md:grid-cols-2"><label class="form-field"><span>Numero de certificado</span><input id="certNumber" class="form-control" value="${esc(cert.number || "")}"></label><label class="form-field"><span>Entidad emisora</span><input id="certIssuer" class="form-control" value="${esc(cert.issuer || "")}"></label><label class="form-field"><span>Fecha de emision</span><input id="certIssuedAt" type="date" class="form-control" value="${esc(cert.issuedAt || "")}"></label><label class="form-field"><span>Fecha de vencimiento</span><input id="certExpiresAt" type="date" class="form-control" value="${esc(cert.expiresAt || "")}"></label><label class="form-field"><span>Archivo del certificado</span><input id="certFile" type="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"></label><label class="form-field"><span>Nombre del archivo</span><input id="certFileName" class="form-control" value="${esc(cert.fileName || "")}" placeholder="certificado.pdf"></label><label class="form-field"><span>Estado</span><select id="certStatus" class="form-control">${options(["Pendiente", "Cargado", "En revision", "Aprobado", "Rechazado", "Vencido"], cert.status || "Pendiente")}</select></label><label class="form-field"><span>Orden de compra relacionada</span><select id="certPurchaseOrder" class="form-control"><option value="">Sin orden vinculada</option>${options(app.data.purchaseOrders.map((order) => ({ value: order.id, label: `${order.number} / ${order.supplier}` })), cert.purchaseOrderId || machine.purchaseOrderId || "")}</select></label><label class="form-field md:col-span-2"><span>Observaciones del certificado</span><textarea id="certObservations" class="form-control" rows="2">${esc(cert.observations || "")}</textarea></label></div></fieldset><button class="btn btn-primary md:col-span-2" type="submit">Guardar equipo</button></form>`);
+  }
+
+  function machineCertificateForm(machine) {
+    if (!canManageCertificates()) return toast("No tienes permiso para cargar certificados.", "error");
+    const cert = normalizeCertificate(machine);
+    showModal(`${cert.fileName ? "Reemplazar" : "Cargar"} certificado`, `<form id="machineCertificateForm" data-id="${esc(machine.id)}" class="grid gap-4 md:grid-cols-2"><div class="info-box md:col-span-2"><b>${esc(machine.code)} / ${esc(machine.name)}</b><span>Formatos permitidos: PDF, JPG y PNG.</span></div><label class="form-field"><span>Numero de certificado</span><input id="quickCertNumber" class="form-control" value="${esc(cert.number || "")}"></label><label class="form-field"><span>Entidad emisora</span><input id="quickCertIssuer" class="form-control" value="${esc(cert.issuer || "")}"></label><label class="form-field"><span>Fecha de emision</span><input id="quickCertIssuedAt" type="date" class="form-control" value="${esc(cert.issuedAt || "")}"></label><label class="form-field"><span>Fecha de vencimiento</span><input id="quickCertExpiresAt" type="date" class="form-control" value="${esc(cert.expiresAt || "")}"></label><label class="form-field"><span>Archivo</span><input id="quickCertFile" type="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"></label><label class="form-field"><span>Nombre del archivo</span><input id="quickCertFileName" class="form-control" value="${esc(cert.fileName || "")}"></label><label class="form-field"><span>Estado</span><select id="quickCertStatus" class="form-control">${options(["Pendiente", "Cargado", "En revision"], cert.fileName ? "Cargado" : cert.status || "Pendiente")}</select></label><label class="form-field"><span>Orden de compra</span><select id="quickCertPurchaseOrder" class="form-control"><option value="">Sin orden vinculada</option>${options(app.data.purchaseOrders.map((order) => ({ value: order.id, label: `${order.number} / ${order.supplier}` })), cert.purchaseOrderId || machine.purchaseOrderId || "")}</select></label><label class="form-field md:col-span-2"><span>Observaciones del certificado</span><textarea id="quickCertObservations" class="form-control" rows="3">${esc(cert.observations || "")}</textarea></label><button class="btn btn-primary md:col-span-2" type="submit">Guardar certificado</button></form>`);
+  }
+
+  function certificateReviewForm(machine, next) {
+    if (!canReviewCertificates()) return toast("No tienes permiso para revisar certificados.", "error");
+    const cert = normalizeCertificate(machine);
+    showModal(`${next} certificado`, `<form id="certificateReviewForm" data-id="${esc(machine.id)}" data-next="${esc(next)}" class="grid gap-4"><div class="info-box"><b>${esc(machine.code)} / ${esc(cert.fileName || "Sin archivo")}</b><span>${badge(cert.status)}</span></div><label class="form-field"><span>Observacion de revision</span><textarea id="reviewObservation" class="form-control" rows="4" required>${esc(cert.observations || "")}</textarea></label><button class="btn btn-primary" type="submit">Confirmar ${esc(next.toLowerCase())}</button></form>`);
   }
 
   function maintenanceForm(item = {}) {
@@ -1092,10 +1176,11 @@
 
   function handleSubmit(event) {
     const form = event.target;
-    const managed = ["reservationForm", "planForm", "productForm", "branchForm", "clientForm", "employeeForm", "bonusForm", "areaForm", "machineForm", "maintenanceForm", "finishMaintenanceForm", "paymentForm", "referralForm", "referralProgramForm", "purchaseOrderForm", "receivePurchaseOrderForm", "seasonForm", "surveyForm"];
+    const managed = ["reservationForm", "scheduleForm", "planForm", "productForm", "branchForm", "clientForm", "employeeForm", "bonusForm", "areaForm", "machineForm", "machineCertificateForm", "certificateReviewForm", "maintenanceForm", "finishMaintenanceForm", "paymentForm", "referralForm", "referralProgramForm", "purchaseOrderForm", "receivePurchaseOrderForm", "seasonForm", "surveyForm"];
     if (!managed.includes(form.id)) return;
     event.preventDefault();
     if (form.id === "reservationForm") return submitReservation();
+    if (form.id === "scheduleForm") return submitSchedule(form);
     if (form.id === "planForm") return submitPlan(form);
     if (form.id === "productForm") return submitProduct(form);
     if (form.id === "branchForm") return submitBranch(form);
@@ -1104,6 +1189,8 @@
     if (form.id === "bonusForm") return submitBonus(form);
     if (form.id === "areaForm") return submitArea(form);
     if (form.id === "machineForm") return submitMachine(form);
+    if (form.id === "machineCertificateForm") return submitMachineCertificate(form);
+    if (form.id === "certificateReviewForm") return submitCertificateReview(form);
     if (form.id === "maintenanceForm") return submitMaintenance(form);
     if (form.id === "finishMaintenanceForm") return submitFinishMaintenance(form);
     if (form.id === "paymentForm") return submitPayment();
@@ -1119,6 +1206,29 @@
     const result = window.GymReservations.create(app.data, { clientId: $("#reservationClient").value, scheduleId: $("#reservationSchedule").value, status: "Confirmada" }, app.user);
     if (!result.ok) return toast(result.reason, "error");
     save(); closeModal(); render(); toast("Reserva creada y cupos actualizados.");
+  }
+
+  function submitSchedule(form) {
+    if (!isAdmin()) return toast("Solo administracion puede crear o editar clases.", "error");
+    const id = form.dataset.id;
+    const area = byId("areas", $("#scheduleArea").value);
+    const branchId = $("#scheduleBranch").value;
+    const start = $("#scheduleStart").value;
+    const end = $("#scheduleEnd").value;
+    const date = $("#scheduleDate").value;
+    const trainerId = $("#scheduleTrainer").value;
+    if (!area || area.branchId !== branchId) return toast("El area seleccionada debe pertenecer a la sucursal de la clase.", "error");
+    if (!date || !start || !end || start >= end) return toast("La fecha y el rango horario son obligatorios; la hora fin debe ser posterior al inicio.", "error");
+    const conflict = app.data.schedules.some((item) => item.id !== id && item.trainerId === trainerId && item.date === date && window.GymRules.overlaps(start, end, item.start, item.end));
+    if (conflict) return toast("El coach ya tiene una clase asignada en ese horario.", "error");
+    const activeReservations = id ? app.data.reservations.filter((reservation) => reservation.scheduleId === id && window.GymRules.activeReservationStates.includes(reservation.status)).length : 0;
+    if (Number($("#scheduleCapacity").value || 0) < activeReservations) return toast("El cupo no puede ser menor que las reservas activas.", "error");
+    const schedule = id ? byId("schedules", id) : { id: uid("s") };
+    Object.assign(schedule, { type: $("#scheduleType").value, branchId, areaId: area.id, trainerId, date, start, end, durationMinutes: Number($("#scheduleDuration").value || 60), capacity: Number($("#scheduleCapacity").value || 1), status: $("#scheduleStatus").value });
+    if (schedule.capacity <= 0) return toast("El cupo debe ser mayor que cero.", "error");
+    if (!id) app.data.schedules.unshift(schedule);
+    window.GymReservations.audit(app.data, app.user, "Horarios", id ? "Editar clase" : "Crear clase", `${schedule.type} ${schedule.date} ${schedule.start}-${schedule.end}`);
+    save(); closeModal(); render(); toast(id ? "Clase actualizada." : "Clase creada.");
   }
 
   function submitPlan(form) {
@@ -1265,11 +1375,81 @@
     const code = $("#machineCode").value.trim();
     if (app.data.machines.some((machine) => machine.code.toLowerCase() === code.toLowerCase() && machine.id !== form.dataset.id)) return toast("El codigo de maquina ya existe.", "error");
     const machine = form.dataset.id ? byId("machines", form.dataset.id) : { id: uid("ma"), acquiredAt: today };
-    Object.assign(machine, { code, name: $("#machineName").value.trim(), type: $("#machineType").value.trim(), areaId: $("#machineArea").value, brand: $("#machineBrand").value.trim(), model: $("#machineModel").value.trim(), simultaneousCapacity: Number($("#machineCapacity").value), lastMaintenance: $("#machineLast").value, nextMaintenance: $("#machineNext").value, notes: $("#machineNotes").value.trim(), status: $("#machineStatus").value });
+    const previousCertificate = machine.certificate ? { ...machine.certificate, history: undefined } : null;
+    const selectedFile = $("#certFile")?.files?.[0];
+    const fileName = selectedFile?.name || $("#certFileName").value.trim();
+    const certificate = {
+      ...normalizeCertificate(machine),
+      number: $("#certNumber").value.trim(),
+      issuer: $("#certIssuer").value.trim(),
+      issuedAt: $("#certIssuedAt").value,
+      expiresAt: $("#certExpiresAt").value,
+      fileName,
+      fileType: fileTypeFromName(fileName),
+      status: $("#certStatus").value,
+      observations: $("#certObservations").value.trim(),
+      purchaseOrderId: $("#certPurchaseOrder").value
+    };
+    Object.assign(machine, { code, name: $("#machineName").value.trim(), type: $("#machineType").value.trim(), areaId: $("#machineArea").value, brand: $("#machineBrand").value.trim(), model: $("#machineModel").value.trim(), simultaneousCapacity: Number($("#machineCapacity").value), lastMaintenance: $("#machineLast").value, nextMaintenance: $("#machineNext").value, notes: $("#machineNotes").value.trim(), status: $("#machineStatus").value, purchaseOrderId: certificate.purchaseOrderId, certificate });
     if (!machine.code || !machine.name) return toast("Codigo y nombre son obligatorios.", "error");
+    if (!["PDF", "JPG", "PNG", ""].includes(certificate.fileType)) return toast("El certificado debe ser PDF, JPG o PNG.", "error");
+    const certChanged = previousCertificate && ["number", "issuer", "issuedAt", "expiresAt", "fileName", "status", "observations", "purchaseOrderId"].some((key) => String(previousCertificate[key] || "") !== String(certificate[key] || ""));
+    if (certChanged && previousCertificate.fileName) {
+      certificate.history ||= [];
+      certificate.history.unshift({ ...previousCertificate, replacedAt: new Date().toLocaleString("sv-SE").slice(0, 16), replacedBy: app.user?.name || "Sistema" });
+    }
+    const canOperate = applyCertificateRules(machine);
+    const blockedActivation = $("#machineStatus").value === "Operativo" && !canOperate;
     if (!form.dataset.id) app.data.machines.unshift(machine);
     window.GymReservations.audit(app.data, app.user, "Maquinas", form.dataset.id ? "Editar maquina" : "Crear maquina", machine.code);
-    save(); closeModal(); render(); toast("Maquina guardada.");
+    save(); closeModal(); render(); toast(blockedActivation ? "No se puede activar el equipo sin certificado aprobado. Quedo Pendiente de documentacion." : "Maquina guardada.", blockedActivation ? "error" : "success");
+  }
+
+  function submitMachineCertificate(form) {
+    if (!canManageCertificates()) return toast("No tienes permiso para cargar certificados.", "error");
+    const machine = byId("machines", form.dataset.id);
+    const cert = normalizeCertificate(machine);
+    const previousCertificate = cert.fileName ? { ...cert, history: undefined } : null;
+    const selectedFile = $("#quickCertFile")?.files?.[0];
+    const fileName = selectedFile?.name || $("#quickCertFileName").value.trim();
+    const nextCertificate = {
+      ...cert,
+      number: $("#quickCertNumber").value.trim(),
+      issuer: $("#quickCertIssuer").value.trim(),
+      issuedAt: $("#quickCertIssuedAt").value,
+      expiresAt: $("#quickCertExpiresAt").value,
+      fileName,
+      fileType: fileTypeFromName(fileName),
+      status: $("#quickCertStatus").value,
+      observations: $("#quickCertObservations").value.trim(),
+      purchaseOrderId: $("#quickCertPurchaseOrder").value
+    };
+    if (!nextCertificate.fileName) return toast("Selecciona o escribe el nombre del archivo del certificado.", "error");
+    if (!["PDF", "JPG", "PNG"].includes(nextCertificate.fileType)) return toast("El certificado debe ser PDF, JPG o PNG.", "error");
+    if (previousCertificate) {
+      nextCertificate.history ||= [];
+      nextCertificate.history.unshift({ ...previousCertificate, replacedAt: new Date().toLocaleString("sv-SE").slice(0, 16), replacedBy: app.user?.name || "Sistema" });
+    }
+    machine.certificate = nextCertificate;
+    machine.purchaseOrderId = nextCertificate.purchaseOrderId;
+    applyCertificateRules(machine);
+    window.GymReservations.audit(app.data, app.user, "Certificados", previousCertificate ? "Reemplazar certificado" : "Cargar certificado", machine.code);
+    save(); closeModal(); render(); toast("Certificado guardado.");
+  }
+
+  function submitCertificateReview(form) {
+    if (!canReviewCertificates()) return toast("No tienes permiso para revisar certificados.", "error");
+    const machine = byId("machines", form.dataset.id);
+    const cert = normalizeCertificate(machine);
+    if (!cert.fileName) return toast("No hay archivo de certificado para revisar.", "error");
+    cert.status = form.dataset.next;
+    cert.reviewedBy = app.user?.name || "Revisor";
+    cert.reviewedAt = new Date().toLocaleString("sv-SE").slice(0, 16);
+    cert.observations = $("#reviewObservation").value.trim();
+    applyCertificateRules(machine);
+    if (cert.status === "Aprobado" && machine.status === "Pendiente de documentacion") machine.status = "Operativo";
+    window.GymReservations.audit(app.data, app.user, "Certificados", `Revision -> ${cert.status}`, machine.code);
+    save(); closeModal(); render(); toast(`Certificado ${cert.status.toLowerCase()}.`);
   }
 
   function submitMaintenance(form) {
@@ -1288,7 +1468,7 @@
     item.finishedAt = $("#finishDate").value;
     item.finalCost = Number($("#finishCost").value);
     item.result = $("#finishResult").value.trim();
-    machine.status = machine.certificate?.status === "Aprobado" ? "Operativo" : "Pendiente de documentacion";
+    machine.status = certificateIsApproved(machine) ? "Operativo" : "Pendiente de documentacion";
     machine.lastMaintenance = item.finishedAt;
     save(); closeModal(); render(); toast("Mantenimiento finalizado y maquina disponible.");
   }
@@ -1363,7 +1543,8 @@
     if (order.purchaseType === "Nueva maquina" && order.reception.inventory && confirm("Continuar al formulario Registrar maquina con datos de la orden?")) {
       const area = app.data.areas.find((item) => item.branchId === order.branchId) || app.data.areas[0];
       const first = order.items[0] || {};
-      machineForm({ code: `MA-${Date.now().toString().slice(-4)}`, name: first.name || "Nueva maquina", type: "Equipo", areaId: area?.id, brand: order.supplier, model: order.number, simultaneousCapacity: 1, acquiredAt: order.reception.receivedAt, lastMaintenance: order.reception.receivedAt, nextMaintenance: "2026-12-10", notes: `Origen ${order.number}. ${order.observations || ""}`, status: order.certificate?.status === "Aprobado" ? "Operativo" : "Pendiente de documentacion" });
+      const certificate = { ...(order.certificate || {}), purchaseOrderId: order.id, history: order.certificate?.history || [] };
+      machineForm({ code: `MA-${Date.now().toString().slice(-4)}`, name: first.name || "Nueva maquina", type: "Equipo", areaId: area?.id, brand: order.supplier, model: order.number, simultaneousCapacity: 1, acquiredAt: order.reception.receivedAt, lastMaintenance: order.reception.receivedAt, nextMaintenance: "2026-12-10", notes: `Origen ${order.number}. ${order.observations || ""}`, purchaseOrderId: order.id, certificate, status: certificate.status === "Aprobado" ? "Operativo" : "Pendiente de documentacion" });
     }
   }
 
@@ -1384,6 +1565,7 @@
     if (action === "logout") return logout();
     if (action === "restore-demo") return restoreDemo();
     if (action === "open-reservation") return reservationForm();
+    if (action === "open-schedule") return scheduleForm(id ? byId("schedules", id) : {});
     if (action === "open-plan") return planForm(id ? byId("plans", id) : {});
     if (action === "open-product") return productForm(id ? byId("products", id) : {});
     if (action === "open-branch") return branchForm(id ? byId("branches", id) : {});
@@ -1417,6 +1599,11 @@
     if (action === "machine-detail") return machineDetail(id);
     if (action === "machine-maintenance") { app.view = "maintenance"; app.filters.maintenance = { search: byId("machines", id).code }; return render(); }
     if (action === "machine-status") return changeMachineStatus(id, el.dataset.next);
+    if (action === "open-machine-certificate") return machineCertificateForm(byId("machines", id));
+    if (action === "certificate-view") return certificateView(id);
+    if (action === "certificate-download") return certificateDownload(id);
+    if (action === "certificate-status") return changeCertificateStatus(id, el.dataset.next);
+    if (action === "certificate-review") return certificateReviewForm(byId("machines", id), el.dataset.next);
     if (action === "reservation-status" || action === "cancel-reservation") return updateReservationStatus(action, id, el.dataset.next);
     if (action === "membership-status") return updateMembershipStatus(id, el.dataset.next);
     if (action === "payment-status") return updatePaymentStatus(id, el.dataset.next);
@@ -1718,7 +1905,60 @@
 
   function machineDetail(id) {
     const machine = byId("machines", id);
-    showModal("Detalle de equipo", `<dl class="detail-grid"><div><dt>Codigo</dt><dd>${esc(machine.code)}</dd></div><div><dt>Nombre</dt><dd>${esc(machine.name)}</dd></div><div><dt>Sucursal</dt><dd>${branchName(branchOfMachine(machine))}</dd></div><div><dt>Area</dt><dd>${areaName(machine.areaId)}</dd></div><div><dt>Marca</dt><dd>${esc(machine.brand)}</dd></div><div><dt>Modelo</dt><dd>${esc(machine.model)}</dd></div><div><dt>Capacidad operativa</dt><dd>${machine.simultaneousCapacity}</dd></div><div><dt>Estado</dt><dd>${badge(machine.status)}</dd></div><div><dt>Certificado</dt><dd>${badge(machine.certificate?.status || "Pendiente")}<small>${esc(machine.certificate?.fileName || "Sin archivo")}</small></dd></div><div><dt>Responsable</dt><dd>${esc(machine.certificate?.reviewedBy || "Pendiente")}<small>${esc(machine.certificate?.reviewedAt || "")}</small></dd></div></dl>`);
+    const cert = normalizeCertificate(machine);
+    const order = cert.purchaseOrderId ? byId("purchaseOrders", cert.purchaseOrderId) : app.data.purchaseOrders.find((item) => item.number === machine.model || item.items?.some((line) => String(machine.name || "").toLowerCase().includes(String(line.name || "").toLowerCase())));
+    const history = (cert.history || []).map((item) => [badge(item.status || "Pendiente"), item.fileName || "Sin archivo", item.issuer || "Sin emisor", item.expiresAt || "Sin vencimiento", item.replacedAt || ""]);
+    showModal("Detalle de equipo", `<dl class="detail-grid"><div><dt>Codigo</dt><dd>${esc(machine.code)}</dd></div><div><dt>Nombre</dt><dd>${esc(machine.name)}</dd></div><div><dt>Sucursal</dt><dd>${branchName(branchOfMachine(machine))}</dd></div><div><dt>Area</dt><dd>${areaName(machine.areaId)}</dd></div><div><dt>Marca</dt><dd>${esc(machine.brand)}</dd></div><div><dt>Modelo</dt><dd>${esc(machine.model)}</dd></div><div><dt>Capacidad operativa</dt><dd>${machine.simultaneousCapacity}</dd></div><div><dt>Estado del equipo</dt><dd>${badge(machine.status)}</dd></div><div><dt>Mantenimiento</dt><dd>${esc(machine.lastMaintenance || "-")}<small>Proximo ${esc(machine.nextMaintenance || "-")}</small></dd></div><div><dt>Orden de compra</dt><dd>${order ? `${esc(order.number)}<small>${esc(order.supplier)} / ${esc(order.status)}</small>` : "Sin orden vinculada"}</dd></div></dl><h3 class="mt-5 font-black">Certificado vigente</h3><dl class="detail-grid mt-3"><div><dt>Estado</dt><dd>${badge(cert.status)}</dd></div><div><dt>Archivo</dt><dd>${icon("file-text")} ${esc(cert.fileName || "Sin archivo")}<small>${esc(cert.fileType || "")}</small></dd></div><div><dt>Numero</dt><dd>${esc(cert.number || "Pendiente")}</dd></div><div><dt>Entidad emisora</dt><dd>${esc(cert.issuer || "Pendiente")}</dd></div><div><dt>Emision</dt><dd>${esc(cert.issuedAt || "Pendiente")}</dd></div><div><dt>Vencimiento</dt><dd>${esc(cert.expiresAt || "No aplica")}</dd></div><div><dt>Responsable</dt><dd>${esc(cert.reviewedBy || "Pendiente")}<small>${esc(cert.reviewedAt || "")}</small></dd></div><div><dt>Observaciones certificado</dt><dd>${esc(cert.observations || "Sin observaciones.")}</dd></div></dl><div class="row-actions mt-4">${certificateDetailActions(machine)}</div><h3 class="mt-5 font-black">Historial de certificados</h3>${simpleTable(["Estado", "Archivo", "Emisor", "Vence", "Reemplazado"], history)}<h3 class="mt-5 font-black">Observaciones generales</h3><p class="mt-2 text-sm text-slate-600">${esc(machine.notes || "Sin observaciones generales.")}</p>`);
+  }
+
+  function certificateDetailActions(machine) {
+    const cert = normalizeCertificate(machine);
+    const actions = [];
+    if (cert.fileName) {
+      actions.push(button(`${icon("eye")} Ver certificado`, "certificate-view", "secondary", `data-id="${machine.id}"`));
+      actions.push(button(`${icon("download")} Descargar`, "certificate-download", "ghost", `data-id="${machine.id}"`));
+    }
+    if (canManageCertificates()) {
+      actions.push(button(`${icon("upload")} Cargar certificado`, "open-machine-certificate", "secondary", `data-id="${machine.id}"`));
+      if (cert.fileName) actions.push(button("Reemplazar certificado", "open-machine-certificate", "warning", `data-id="${machine.id}"`));
+      if (cert.fileName && ["Cargado", "Pendiente"].includes(cert.status)) actions.push(button("Enviar a revision", "certificate-status", "primary", `data-id="${machine.id}" data-next="En revision"`));
+    }
+    if (canReviewCertificates() && cert.fileName && ["Cargado", "En revision"].includes(cert.status)) {
+      actions.push(button("Aprobar", "certificate-review", "success", `data-id="${machine.id}" data-next="Aprobado"`));
+      actions.push(button("Rechazar", "certificate-review", "danger", `data-id="${machine.id}" data-next="Rechazado"`));
+    }
+    return actions.join("") || `<span class="text-sm text-slate-500">Solo visualizacion de estado.</span>`;
+  }
+
+  function certificateView(id) {
+    const machine = byId("machines", id);
+    const cert = normalizeCertificate(machine);
+    if (!cert.fileName) return machineCertificateForm(machine);
+    showModal("Archivo de certificado", `<dl class="detail-grid"><div><dt>Equipo</dt><dd>${esc(machine.code)} / ${esc(machine.name)}</dd></div><div><dt>Estado</dt><dd>${badge(cert.status)}</dd></div><div><dt>Archivo</dt><dd>${icon("file-text")} ${esc(cert.fileName)}</dd></div><div><dt>Tipo</dt><dd>${esc(cert.fileType || fileTypeFromName(cert.fileName))}</dd></div><div><dt>Numero</dt><dd>${esc(cert.number || "Pendiente")}</dd></div><div><dt>Orden relacionada</dt><dd>${cert.purchaseOrderId ? esc(byId("purchaseOrders", cert.purchaseOrderId)?.number || cert.purchaseOrderId) : "Sin orden"}</dd></div></dl><p class="mt-4 text-sm text-slate-600">Vista simulada del archivo cargado en LocalStorage.</p><div class="row-actions mt-4">${button(`${icon("download")} Descargar`, "certificate-download", "primary", `data-id="${machine.id}"`)}</div>`);
+  }
+
+  function certificateDownload(id) {
+    const machine = byId("machines", id);
+    const cert = normalizeCertificate(machine);
+    if (!cert.fileName) return toast("No hay archivo de certificado para descargar.", "error");
+    const blob = new Blob([`Certificado simulado\nEquipo: ${machine.code} / ${machine.name}\nArchivo: ${cert.fileName}\nEstado: ${cert.status}\nOrden: ${cert.purchaseOrderId || "Sin orden"}\n`], { type: "text/plain;charset=utf-8" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = cert.fileName.replace(/\.(pdf|jpg|jpeg|png)$/i, "") + "-simulado.txt";
+    link.click();
+    URL.revokeObjectURL(link.href);
+    toast("Descarga simulada generada.");
+  }
+
+  function changeCertificateStatus(id, next) {
+    if (!canManageCertificates()) return toast("No tienes permiso para cambiar certificados.", "error");
+    const machine = byId("machines", id);
+    const cert = normalizeCertificate(machine);
+    if (!cert.fileName && next !== "Pendiente") return toast("Carga un archivo antes de enviar el certificado a revision.", "error");
+    cert.status = next;
+    applyCertificateRules(machine);
+    window.GymReservations.audit(app.data, app.user, "Certificados", `Estado -> ${next}`, machine.code);
+    save(); closeModal(); render(); toast("Estado del certificado actualizado.");
   }
 
   function changeMachineStatus(id, next) {
@@ -1726,6 +1966,11 @@
     const machine = byId("machines", id);
     const allowed = window.GymRules.machineFlow[machine.status] || [];
     if (!allowed.includes(next)) return toast("Transicion de maquina no permitida.", "error");
+    if (next === "Operativo" && !certificateIsApproved(machine)) {
+      machine.status = "Pendiente de documentacion";
+      save(); render();
+      return toast("No se puede activar el equipo sin certificado de calidad aprobado.", "error");
+    }
     machine.status = next;
     save(); render(); toast("Estado de maquina actualizado.");
   }
@@ -1854,6 +2099,8 @@
   function handleInput(event) {
     const id = event.target.id;
     const value = event.target.value;
+    if (id === "certFile" && $("#certFileName") && event.target.files?.[0]) $("#certFileName").value = event.target.files[0].name;
+    if (id === "quickCertFile" && $("#quickCertFileName") && event.target.files?.[0]) $("#quickCertFileName").value = event.target.files[0].name;
     const simpleMap = {
       clientFilter: ["client", null], clientStatusFilter: ["clientStatus", null],
       clientBranchFilter: ["clientBranch", null], clientMembershipFilter: ["clientMembership", null],
@@ -1869,6 +2116,11 @@
       return render();
     }
     if (["reservationClient", "reservationSchedule"].includes(id)) return updateReservationPreview();
+    if (id === "scheduleBranch" && $("#scheduleArea")) {
+      const branchAreas = app.data.areas.filter((area) => area.branchId === value);
+      $("#scheduleArea").innerHTML = options(branchAreas.map((area) => ({ value: area.id, label: area.name })), branchAreas[0]?.id || "");
+      return;
+    }
     if (id === "poBranchInput" && $("#poBranchAdminInput")) {
       $("#poBranchAdminInput").innerHTML = options(adminOptionsForBranch(value), branchAdminFor(value)?.id);
       return;
@@ -2022,14 +2274,16 @@
     Object.assign(boxingArea, { name: "Boxeo", type: "Area deportiva", resourceName: "Ring de boxeo", description: boxingArea.description || "Area deportiva con ring; solo sucursales con amenidad de boxeo pueden ofertarla.", branchId: "b1", capacity: Number(boxingArea.capacity || 15), schedule: boxingArea.schedule === "06:00-21:00" ? "06:00-19:00" : boxingArea.schedule || "06:00-19:00", allowsClasses: true, allowsReservations: true, status: boxingArea.status || "Disponible" });
     data.machines.forEach((machine) => {
       if (["Disponible"].includes(machine.status) || String(machine.status).startsWith("Reserva") || String(machine.status).startsWith("En u")) machine.status = "Operativo";
-      machine.certificate ||= { status: "Pendiente", fileName: "", reviewedBy: "", reviewedAt: "", observations: "" };
+      const cert = normalizeCertificate(machine);
+      cert.history ||= [];
+      if (!certificateIsApproved(machine) && machine.status === "Operativo") machine.status = "Pendiente de documentacion";
     });
     let ring = data.machines.find((machine) => machine.areaId === "a-boxeo" && machine.type === "Boxeo");
     if (!ring) {
       ring = { id: "ma-boxeo", code: "BOX-001", type: "Boxeo", areaId: "a-boxeo", brand: "CombatFit", model: "R15", acquiredAt: "2025-05-10", lastMaintenance: "2026-08-01", nextMaintenance: "2026-10-01", notes: "Recurso principal del area de Boxeo." };
       data.machines.push(ring);
     }
-    Object.assign(ring, { name: "Ring de boxeo", simultaneousCapacity: Number(ring.simultaneousCapacity || 15), certificate: ring.certificate || { status: "Aprobado", fileName: "cert-ring-boxeo.pdf", reviewedBy: "Valeria Rivas", reviewedAt: "2026-08-01", observations: "Certificado de calidad vigente; apto para clases y reservas." }, status: ["Operativo", "En mantenimiento", "Danado", "Fuera de servicio", "Retirado"].includes(ring.status) ? ring.status : "Operativo" });
+    Object.assign(ring, { name: "Ring de boxeo", simultaneousCapacity: Number(ring.simultaneousCapacity || 15), certificate: ring.certificate || { number: "CERT-BOX-2026-001", issuer: "Federacion Guatemalteca de Boxeo", issuedAt: "2026-08-01", expiresAt: "2027-08-01", status: "Aprobado", fileName: "cert-ring-boxeo.pdf", fileType: "PDF", reviewedBy: "Valeria Rivas", reviewedAt: "2026-08-01", observations: "Certificado de calidad vigente; apto para clases y reservas.", history: [] }, status: certificateIsApproved(ring) ? "Operativo" : "Pendiente de documentacion" });
     if (!data.schedules.some((schedule) => schedule.id === "s4")) data.schedules.push({ id: "s4", type: "Boxeo", date: "2026-09-10", start: "18:00", end: "19:00", areaId: "a-boxeo", branchId: "b1", trainerId: "t4", capacity: 15, durationMinutes: 60, status: "Disponible" });
     if (!data.schedules.some((schedule) => schedule.id === "s8")) data.schedules.push({ id: "s8", type: "Boxeo", date: "2026-09-12", start: "07:00", end: "08:00", areaId: "a-boxeo", branchId: "b1", trainerId: "t4", capacity: 15, durationMinutes: 60, status: "Disponible" });
     data.reservations.forEach((reservation) => {

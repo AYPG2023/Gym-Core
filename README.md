@@ -22,8 +22,10 @@ Cuentas:
 - Gestion administrativa de clientes, empleados, membresias, accesos, areas/equipos, horarios, reservas, cafeteria, suplementos, ventas, compras, mantenimiento, metricas, reportes y servicios.
 - Modulo de sucursales con capacidad, contacto, encargado, estado e indicadores relacionados.
 - Inventario con pestanas separadas para areas y equipos, sin ocupacion individual de maquinas.
+- Certificado de calidad separado de observaciones generales, con archivo PDF/JPG/PNG simulado, estados con badge, historial de reemplazos, detalle por equipo y bloqueo de activacion sin certificado aprobado.
 - Mantenimiento separado del inventario con filtros, historial y acciones por estado.
 - Dashboard filtrable por sucursal.
+- Horarios y clases con creacion/edicion administrativa, asignacion de sucursal, area, coach, fecha, hora, cupo y estado.
 - Reportes por categorias con imprimir, CSV y descarga simulada.
 - Clientes con busqueda, filtros por sucursal, membresia y estado, detalle de pagos, membresias, reservas, asistencias y observaciones.
 - Portal de cliente con modulo de referidos: codigo personal, copiar/compartir, registro de referido, historial, estados, beneficios obtenidos y saldo pendiente.
