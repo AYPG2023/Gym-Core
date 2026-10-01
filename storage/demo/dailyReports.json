@@ -1,0 +1,19 @@
+[
+  {
+    "id": "dr1",
+    "date": "2026-09-10",
+    "branchId": "b1",
+    "attendedUsers": 38,
+    "averageMinutes": 82,
+    "peakHour": "18:00",
+    "membershipsSold": 3,
+    "productsSold": 8,
+    "partnerServiceSales": 2,
+    "swimmingAttendance": 9,
+    "boxingAttendance": 12,
+    "totalIncome": 1825,
+    "accessWarnings": 1,
+    "emailStatus": "Error de envio",
+    "savedAt": "2026-09-10 22:15"
+  }
+]

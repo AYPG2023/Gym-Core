@@ -1,0 +1,66 @@
+[
+  {
+    "id": "pay1",
+    "clientId": "c1",
+    "branchId": "b1",
+    "itemType": "Membresia",
+    "planId": "p-haute",
+    "amount": 350,
+    "date": "2026-09-01",
+    "method": "Tarjeta",
+    "receipt": "FAC-1001",
+    "status": "Pagado",
+    "receptionistId": "e6",
+    "invoice": {
+      "number": "1001",
+      "series": "REN-A",
+      "date": "2026-09-01",
+      "status": "Enviada",
+      "email": "ana@gym.test",
+      "sent": true,
+      "attempts": 1
+    }
+  },
+  {
+    "id": "pay2",
+    "clientId": "c2",
+    "branchId": "b1",
+    "itemType": "Membresia",
+    "planId": "p-basica",
+    "amount": 250,
+    "date": "2026-09-05",
+    "method": "Efectivo",
+    "receipt": "FAC-1002",
+    "status": "Pagado",
+    "receptionistId": "e6",
+    "invoice": {
+      "number": "1002",
+      "series": "REN-A",
+      "date": "2026-09-05",
+      "status": "Emitida",
+      "email": "carlos@gym.test",
+      "sent": false,
+      "attempts": 0
+    }
+  },
+  {
+    "id": "pay3",
+    "clientId": "c3",
+    "branchId": "b2",
+    "itemType": "Producto",
+    "amount": 125,
+    "date": "2026-09-04",
+    "method": "Transferencia",
+    "receipt": "FAC-1003",
+    "status": "Pagado",
+    "invoice": {
+      "number": "1003",
+      "series": "REN-B",
+      "date": "2026-09-04",
+      "status": "Pendiente de emision",
+      "email": "sofia@gym.test",
+      "sent": false,
+      "attempts": 0
+    }
+  }
+]

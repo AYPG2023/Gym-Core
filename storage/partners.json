@@ -1,0 +1,23 @@
+[
+  {
+    "id": "par1",
+    "name": "NutriWell",
+    "type": "Nutricionista",
+    "contact": "nutriwell@gym.test",
+    "status": "Activo"
+  },
+  {
+    "id": "par2",
+    "name": "Suplementos GT",
+    "type": "Proveedor",
+    "contact": "ventas@suplementos.test",
+    "status": "Activo"
+  },
+  {
+    "id": "par3",
+    "name": "RelaxPro",
+    "type": "Masajes",
+    "contact": "agenda@relax.test",
+    "status": "Activo"
+  }
+]

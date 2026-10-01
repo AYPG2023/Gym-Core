@@ -1,0 +1,54 @@
+[
+  {
+    "id": "prod1",
+    "code": "CAF-001",
+    "name": "Bowl proteico",
+    "description": "Yogurt, fruta y granola.",
+    "category": "Cafeteria",
+    "image": "https://images.unsplash.com/photo-1490645935967-10de6ba17061?auto=format&fit=crop&w=900&q=80",
+    "price": 45,
+    "stock": 18,
+    "branchId": "b1",
+    "partnerId": "",
+    "status": "Activo"
+  },
+  {
+    "id": "prod2",
+    "code": "BEB-001",
+    "name": "Smoothie verde",
+    "description": "Bebida post entrenamiento.",
+    "category": "Bebidas",
+    "image": "https://images.unsplash.com/photo-1622597467836-f3285f2131b8?auto=format&fit=crop&w=900&q=80",
+    "price": 32,
+    "stock": 25,
+    "branchId": "b1",
+    "partnerId": "",
+    "status": "Activo"
+  },
+  {
+    "id": "prod3",
+    "code": "SUP-001",
+    "name": "Proteina whey",
+    "description": "Suplemento de 2 lb.",
+    "category": "Suplementos",
+    "image": "https://images.unsplash.com/photo-1593095948071-474c5cc2989d?auto=format&fit=crop&w=900&q=80",
+    "price": 280,
+    "stock": 9,
+    "branchId": "b2",
+    "partnerId": "par2",
+    "status": "Activo"
+  },
+  {
+    "id": "prod4",
+    "code": "COM-001",
+    "name": "Combo energia",
+    "description": "Smoothie mas barra proteica.",
+    "category": "Combos",
+    "image": "https://images.unsplash.com/photo-1514995669114-6081e934b693?auto=format&fit=crop&w=900&q=80",
+    "price": 58,
+    "stock": 12,
+    "branchId": "b1",
+    "partnerId": "",
+    "status": "Activo"
+  }
+]

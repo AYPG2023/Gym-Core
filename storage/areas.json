@@ -1,0 +1,60 @@
+[
+  {
+    "id": "a-cardio",
+    "name": "Cardio",
+    "description": "Caminadoras, elipticas y bicicletas como acceso general.",
+    "branchId": "b1",
+    "capacity": 20,
+    "schedule": "05:00-22:00",
+    "status": "Disponible"
+  },
+  {
+    "id": "a-pesas",
+    "name": "Pesas",
+    "description": "Peso libre y maquinas de fuerza.",
+    "branchId": "b1",
+    "capacity": 18,
+    "schedule": "05:00-22:00",
+    "status": "Disponible"
+  },
+  {
+    "id": "a-piscina",
+    "name": "Natacion",
+    "description": "Piscina; referencia inicial de clase de una hora.",
+    "branchId": "b1",
+    "capacity": 10,
+    "schedule": "04:00-22:00",
+    "status": "Disponible"
+  },
+  {
+    "id": "a-boxeo",
+    "name": "Boxeo",
+    "type": "Area deportiva",
+    "resourceName": "Ring de boxeo",
+    "allowsClasses": true,
+    "allowsReservations": true,
+    "description": "Area deportiva con ring; solo sucursales con amenidad de boxeo pueden ofertarla.",
+    "branchId": "b1",
+    "capacity": 15,
+    "schedule": "06:00-19:00",
+    "status": "Disponible"
+  },
+  {
+    "id": "a-spinning",
+    "name": "Spinning",
+    "description": "Salon con bicicletas indoor.",
+    "branchId": "b2",
+    "capacity": 16,
+    "schedule": "06:00-21:00",
+    "status": "Capacidad limitada"
+  },
+  {
+    "id": "a-funcional",
+    "name": "Entrenamiento funcional",
+    "description": "TRX, bandas y estaciones.",
+    "branchId": "b2",
+    "capacity": 12,
+    "schedule": "06:00-21:00",
+    "status": "Disponible"
+  }
+]

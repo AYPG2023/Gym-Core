@@ -1,0 +1,101 @@
+[
+  {
+    "id": "s1",
+    "type": "Coaching",
+    "date": "2026-09-10",
+    "start": "06:00",
+    "end": "07:00",
+    "areaId": "a-cardio",
+    "branchId": "b1",
+    "trainerId": "t1",
+    "capacity": 8,
+    "status": "Disponible"
+  },
+  {
+    "id": "s2",
+    "type": "Pesas",
+    "date": "2026-09-10",
+    "start": "07:00",
+    "end": "08:00",
+    "areaId": "a-pesas",
+    "branchId": "b1",
+    "trainerId": "t2",
+    "capacity": 12,
+    "status": "Disponible"
+  },
+  {
+    "id": "s3",
+    "type": "Natacion",
+    "date": "2026-09-10",
+    "start": "08:00",
+    "end": "09:00",
+    "areaId": "a-piscina",
+    "branchId": "b1",
+    "trainerId": "t1",
+    "capacity": 10,
+    "durationMinutes": 60,
+    "status": "Disponible"
+  },
+  {
+    "id": "s4",
+    "type": "Boxeo",
+    "date": "2026-09-10",
+    "start": "18:00",
+    "end": "19:00",
+    "areaId": "a-boxeo",
+    "branchId": "b1",
+    "trainerId": "t4",
+    "capacity": 15,
+    "durationMinutes": 60,
+    "status": "Disponible"
+  },
+  {
+    "id": "s8",
+    "type": "Boxeo",
+    "date": "2026-09-12",
+    "start": "07:00",
+    "end": "08:00",
+    "areaId": "a-boxeo",
+    "branchId": "b1",
+    "trainerId": "t4",
+    "capacity": 15,
+    "durationMinutes": 60,
+    "status": "Disponible"
+  },
+  {
+    "id": "s5",
+    "type": "Spinning",
+    "date": "2026-09-11",
+    "start": "18:00",
+    "end": "19:00",
+    "areaId": "a-spinning",
+    "branchId": "b2",
+    "trainerId": "t3",
+    "capacity": 12,
+    "status": "Disponible"
+  },
+  {
+    "id": "s6",
+    "type": "Entrenamiento funcional",
+    "date": "2026-09-11",
+    "start": "06:00",
+    "end": "07:00",
+    "areaId": "a-funcional",
+    "branchId": "b2",
+    "trainerId": "t1",
+    "capacity": 10,
+    "status": "Disponible"
+  },
+  {
+    "id": "s7",
+    "type": "Cardio",
+    "date": "2026-09-11",
+    "start": "17:00",
+    "end": "18:00",
+    "areaId": "a-cardio",
+    "branchId": "b1",
+    "trainerId": "t2",
+    "capacity": 14,
+    "status": "Disponible"
+  }
+]

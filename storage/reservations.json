@@ -1,0 +1,82 @@
+[
+  {
+    "id": "r1",
+    "clientId": "c1",
+    "scheduleId": "s1",
+    "status": "Completada",
+    "attendance": "Presente",
+    "createdAt": "2026-09-09 08:00",
+    "history": [
+      {
+        "status": "Pendiente",
+        "at": "2026-09-09 08:00"
+      },
+      {
+        "status": "Confirmada",
+        "at": "2026-09-09 08:03"
+      },
+      {
+        "status": "Completada",
+        "at": "2026-09-10 07:00"
+      }
+    ]
+  },
+  {
+    "id": "r2",
+    "clientId": "c2",
+    "scheduleId": "s2",
+    "status": "Pendiente",
+    "attendance": "Pendiente",
+    "createdAt": "2026-09-09 09:10",
+    "history": [
+      {
+        "status": "Pendiente",
+        "at": "2026-09-09 09:10"
+      }
+    ]
+  },
+  {
+    "id": "r3",
+    "clientId": "c3",
+    "scheduleId": "s5",
+    "status": "Confirmada",
+    "attendance": "Pendiente",
+    "createdAt": "2026-09-08 18:10",
+    "history": [
+      {
+        "status": "Pendiente",
+        "at": "2026-09-08 18:10"
+      },
+      {
+        "status": "Confirmada",
+        "at": "2026-09-08 18:11"
+      }
+    ]
+  },
+  {
+    "id": "r4",
+    "clientId": "c1",
+    "scheduleId": "s4",
+    "status": "Completada",
+    "attendance": "Presente",
+    "createdAt": "2026-09-06 07:20",
+    "history": [
+      {
+        "status": "Pendiente",
+        "at": "2026-09-06 07:20"
+      },
+      {
+        "status": "Confirmada",
+        "at": "2026-09-06 07:25"
+      },
+      {
+        "status": "En curso",
+        "at": "2026-09-10 18:00"
+      },
+      {
+        "status": "Completada",
+        "at": "2026-09-10 19:00"
+      }
+    ]
+  }
+]

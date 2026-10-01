@@ -1,0 +1,18 @@
+[
+  {
+    "id": "refprog-demo",
+    "name": "Referidos Basica demo",
+    "participatingPlanIds": [
+      "p-basica"
+    ],
+    "startDate": "2026-09-01",
+    "endDate": "2026-12-31",
+    "benefitType": "Saldo a favor",
+    "amount": 10,
+    "beneficiary": "Cliente que refiere",
+    "maxReferrals": 20,
+    "validityDays": 30,
+    "conditions": "El referido debe adquirir y pagar una membresia participante. Estado del requisito: pendiente de validacion con el cliente.",
+    "status": "Activa"
+  }
+]

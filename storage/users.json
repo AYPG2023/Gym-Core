@@ -1,0 +1,76 @@
+[
+  {
+    "id": "u-admin",
+    "name": "Valeria Rivas",
+    "email": "admin@gym.test",
+    "role": "admin",
+    "status": "Activo"
+  },
+  {
+    "id": "u-recep",
+    "name": "Mario Escobar",
+    "email": "recepcion@gym.test",
+    "role": "reception",
+    "employeeId": "e5",
+    "status": "Activo"
+  },
+  {
+    "id": "u-trainer",
+    "name": "Lucia Mendez",
+    "email": "trainer@gym.test",
+    "role": "trainer",
+    "trainerId": "t1",
+    "employeeId": "e1",
+    "status": "Activo"
+  },
+  {
+    "id": "u-client",
+    "name": "Ana Lopez",
+    "email": "cliente@gym.test",
+    "role": "client",
+    "clientId": "c1",
+    "status": "Activo"
+  },
+  {
+    "id": "u-manager",
+    "name": "Gabriela Torres",
+    "email": "gerencia@gym.test",
+    "role": "general_manager",
+    "status": "Activo"
+  },
+  {
+    "id": "u-supervisor",
+    "name": "Rafael Mejia",
+    "email": "supervisor@gym.test",
+    "role": "supervisor",
+    "status": "Activo"
+  },
+  {
+    "id": "u-purchases",
+    "name": "Claudia Monroy",
+    "email": "compras@gym.test",
+    "role": "purchases",
+    "status": "Activo"
+  },
+  {
+    "id": "u-inventory",
+    "name": "Luis Barrios",
+    "email": "inventario@gym.test",
+    "role": "inventory",
+    "status": "Activo"
+  },
+  {
+    "id": "u-cafeteria",
+    "name": "Diana Castillo",
+    "email": "cafeteria@gym.test",
+    "role": "cafeteria",
+    "status": "Activo"
+  },
+  {
+    "id": "u-partner",
+    "name": "NutriWell Partner",
+    "email": "partner@gym.test",
+    "role": "partner",
+    "status": "Activo"
+  }
+]

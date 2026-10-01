@@ -1,0 +1,112 @@
+[
+  {
+    "employeeId": "e1",
+    "period": "2026-09",
+    "metrics": [
+      {
+        "label": "Sesiones de coaching completadas",
+        "goal": 48,
+        "result": 52,
+        "unit": "sesiones",
+        "threshold": 85,
+        "bonusAmount": 700,
+        "status": "Bono completo"
+      },
+      {
+        "label": "Satisfaccion de clientes",
+        "goal": 90,
+        "result": 94,
+        "unit": "%",
+        "threshold": 90,
+        "bonusAmount": 500,
+        "status": "Bono completo"
+      }
+    ],
+    "assignedClasses": "Coaching, funcional",
+    "clientsServed": 86,
+    "absences": 1,
+    "rating": 4.8
+  },
+  {
+    "employeeId": "e2",
+    "period": "2026-09",
+    "metrics": [
+      {
+        "label": "Sesiones de coaching completadas",
+        "goal": 54,
+        "result": 44,
+        "unit": "sesiones",
+        "threshold": 80,
+        "bonusAmount": 700,
+        "status": "Bono parcial"
+      },
+      {
+        "label": "Satisfaccion de clientes",
+        "goal": 92,
+        "result": 87,
+        "unit": "%",
+        "threshold": 90,
+        "bonusAmount": 500,
+        "status": "No alcanzado"
+      }
+    ],
+    "assignedClasses": "Pesas",
+    "clientsServed": 74,
+    "absences": 2,
+    "rating": 4.5
+  },
+  {
+    "employeeId": "e5",
+    "period": "2026-09",
+    "metrics": [
+      {
+        "label": "Venta de membresias",
+        "goal": 40,
+        "result": 44,
+        "unit": "ventas",
+        "threshold": 85,
+        "bonusAmount": 700,
+        "status": "Bono completo"
+      },
+      {
+        "label": "Atencion o satisfaccion del cliente",
+        "goal": 90,
+        "result": 82,
+        "unit": "%",
+        "threshold": 80,
+        "bonusAmount": 500,
+        "status": "Bono parcial"
+      }
+    ],
+    "clientsServed": 132,
+    "absences": 0,
+    "rating": 4.7
+  },
+  {
+    "employeeId": "e6",
+    "period": "2026-09",
+    "metrics": [
+      {
+        "label": "Venta de membresias",
+        "goal": 38,
+        "result": 30,
+        "unit": "ventas",
+        "threshold": 85,
+        "bonusAmount": 700,
+        "status": "No alcanzado"
+      },
+      {
+        "label": "Atencion o satisfaccion del cliente",
+        "goal": 90,
+        "result": 0,
+        "unit": "%",
+        "threshold": 80,
+        "bonusAmount": 500,
+        "status": "Pendiente de evaluacion"
+      }
+    ],
+    "clientsServed": 102,
+    "absences": 1,
+    "rating": 4.4
+  }
+]

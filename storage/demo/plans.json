@@ -1,0 +1,99 @@
+[
+  {
+    "id": "p-basica",
+    "name": "Basica",
+    "price": 250,
+    "durationDays": 30,
+    "status": "Activa",
+    "areas": [
+      "a-cardio",
+      "a-pesas",
+      "a-piscina"
+    ],
+    "reservationLimit": 4,
+    "benefits": [
+      {
+        "name": "Acceso ilimitado al gimnasio",
+        "limit": "Ilimitado",
+        "period": "mes"
+      },
+      {
+        "name": "Coaching incluido",
+        "limit": 1,
+        "period": "semana"
+      },
+      {
+        "name": "Descuento en parqueo",
+        "limit": 10,
+        "unit": "%",
+        "period": "uso"
+      },
+      {
+        "name": "Acceso a piscina",
+        "limit": "Incluido",
+        "period": "mes"
+      },
+      {
+        "name": "Acceso a boxeo",
+        "limit": "No incluido",
+        "period": "mes"
+      }
+    ],
+    "pendingBenefits": []
+  },
+  {
+    "id": "p-haute",
+    "name": "Haute",
+    "price": 350,
+    "durationDays": 30,
+    "status": "Activa",
+    "areas": [
+      "a-cardio",
+      "a-pesas",
+      "a-piscina",
+      "a-boxeo",
+      "a-spinning",
+      "a-funcional"
+    ],
+    "reservationLimit": 8,
+    "benefits": [
+      {
+        "name": "Acceso ilimitado al gimnasio",
+        "limit": "Ilimitado",
+        "period": "mes"
+      },
+      {
+        "name": "Coaching incluido",
+        "limit": 3,
+        "period": "mes"
+      },
+      {
+        "name": "Descuento en parqueo",
+        "limit": 20,
+        "unit": "%",
+        "period": "uso"
+      },
+      {
+        "name": "Acceso a piscina",
+        "limit": "Incluido",
+        "period": "mes"
+      },
+      {
+        "name": "Boxeo segun disponibilidad",
+        "limit": "Configurable",
+        "period": "clase"
+      },
+      {
+        "name": "Descuento en servicios",
+        "limit": 10,
+        "unit": "%",
+        "period": "compra"
+      }
+    ],
+    "pendingBenefits": [
+      "Masajes Haute",
+      "Dias de prueba",
+      "Referidos"
+    ]
+  }
+]

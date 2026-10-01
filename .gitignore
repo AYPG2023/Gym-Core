@@ -2,3 +2,5 @@
 Thumbs.db
 *.log
 .idea/
+storage/sessions/*
+!storage/sessions/.gitkeep

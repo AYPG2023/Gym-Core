@@ -1,0 +1,42 @@
+[
+  {
+    "id": "m1",
+    "clientId": "c1",
+    "planId": "p-haute",
+    "startDate": "2026-09-01",
+    "endDate": "2026-09-30",
+    "status": "Activa"
+  },
+  {
+    "id": "m2",
+    "clientId": "c2",
+    "planId": "p-basica",
+    "startDate": "2026-08-20",
+    "endDate": "2026-09-18",
+    "status": "Proxima a vencer"
+  },
+  {
+    "id": "m3",
+    "clientId": "c3",
+    "planId": "p-haute",
+    "startDate": "2026-08-01",
+    "endDate": "2026-10-30",
+    "status": "Activa"
+  },
+  {
+    "id": "m4",
+    "clientId": "c4",
+    "planId": "p-basica",
+    "startDate": "2026-08-01",
+    "endDate": "2026-08-31",
+    "status": "Suspendida"
+  },
+  {
+    "id": "m5",
+    "clientId": "c5",
+    "planId": "p-haute",
+    "startDate": "2026-09-01",
+    "endDate": "2026-09-30",
+    "status": "Activa"
+  }
+]

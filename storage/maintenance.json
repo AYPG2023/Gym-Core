@@ -1,0 +1,14 @@
+[
+  {
+    "id": "mt1",
+    "machineId": "ma4",
+    "type": "Preventivo",
+    "startDate": "2026-09-09",
+    "estimatedEnd": "2026-09-12",
+    "technician": "TecnoFit",
+    "cost": 450,
+    "description": "Revision de bicicletas de spinning.",
+    "result": "",
+    "status": "En proceso"
+  }
+]

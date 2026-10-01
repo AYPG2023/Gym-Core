@@ -1,0 +1,112 @@
+[
+  {
+    "id": "po1",
+    "number": "OC-2026-001",
+    "date": "2026-09-01",
+    "branchId": "b1",
+    "requesterId": "e8",
+    "supplier": "FitMachines GT",
+    "purchaseType": "Nueva maquina",
+    "items": [
+      {
+        "name": "Caminadora comercial",
+        "quantity": 2,
+        "unitPrice": 14500
+      }
+    ],
+    "quotes": [
+      {
+        "supplier": "FitMachines GT",
+        "price": 29000,
+        "quality": 94
+      },
+      {
+        "supplier": "ProGym",
+        "price": 30300,
+        "quality": 90
+      },
+      {
+        "supplier": "Equipos Maya",
+        "price": 28500,
+        "quality": 86
+      }
+    ],
+    "warranty": "24 meses",
+    "deliveryTime": "20 dias",
+    "certificate": {
+      "status": "Aprobado",
+      "fileName": "cert-caminadora.pdf",
+      "reviewedBy": "Valeria Rivas",
+      "reviewedAt": "2026-09-02",
+      "observations": "Certificado valido."
+    },
+    "taxRate": 0.12,
+    "reason": "Ampliacion de cardio Zona 10",
+    "expectedDelivery": "2026-09-20",
+    "observations": "Instalacion incluida.",
+    "status": "Ordenada",
+    "approvals": {
+      "branchAdmin": {
+        "by": "e8",
+        "at": "2026-09-01 09:00"
+      },
+      "generalManager": {
+        "by": "e8",
+        "at": "2026-09-01 10:00"
+      }
+    },
+    "reception": null
+  },
+  {
+    "id": "po2",
+    "number": "OC-2026-002",
+    "date": "2026-09-02",
+    "branchId": "b2",
+    "requesterId": "e5",
+    "supplier": "Bike Studio",
+    "purchaseType": "Nueva maquina",
+    "items": [
+      {
+        "name": "Bicicleta indoor",
+        "quantity": 5,
+        "unitPrice": 6200
+      }
+    ],
+    "quotes": [
+      {
+        "supplier": "Bike Studio",
+        "price": 31000,
+        "quality": 91
+      },
+      {
+        "supplier": "Indoor Pro",
+        "price": 32500,
+        "quality": 93
+      },
+      {
+        "supplier": "SportLine",
+        "price": 30000,
+        "quality": 84
+      }
+    ],
+    "warranty": "18 meses",
+    "deliveryTime": "30 dias",
+    "certificate": {
+      "status": "Pendiente",
+      "fileName": "",
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "observations": "No recibido aun."
+    },
+    "taxRate": 0.12,
+    "reason": "Reemplazo de bicicletas antiguas",
+    "expectedDelivery": "2026-10-01",
+    "observations": "Certificado pendiente.",
+    "status": "En revision",
+    "approvals": {
+      "branchAdmin": null,
+      "generalManager": null
+    },
+    "reception": null
+  }
+]

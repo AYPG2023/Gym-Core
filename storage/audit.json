@@ -1,0 +1,42 @@
+[
+    {
+        "id": "log-828d2dcceb",
+        "at": "2026-09-13 22:58",
+        "user": "Valeria Rivas",
+        "module": "Auth",
+        "action": "Inicio de sesion",
+        "detail": "admin@gym.test"
+    },
+    {
+        "id": "log-784f22ac35",
+        "at": "2026-09-13 22:58",
+        "user": "Mario Escobar",
+        "module": "Auth",
+        "action": "Inicio de sesion",
+        "detail": "recepcion@gym.test"
+    },
+    {
+        "id": "log-006e68bedf",
+        "at": "2026-09-13 22:53",
+        "user": "Ana Lopez",
+        "module": "Auth",
+        "action": "Inicio de sesion",
+        "detail": "cliente@gym.test"
+    },
+    {
+        "id": "log-be1741a523",
+        "at": "2026-09-13 22:53",
+        "user": "Valeria Rivas",
+        "module": "Auth",
+        "action": "Inicio de sesion",
+        "detail": "admin@gym.test"
+    },
+    {
+        "id": "log1",
+        "at": "2026-09-09 08:03",
+        "user": "Sistema",
+        "module": "Reservas",
+        "action": "Confirmar reserva",
+        "detail": "Ana Lopez / Cardio"
+    }
+]

@@ -1,0 +1,67 @@
+[
+  {
+    "id": "c1",
+    "code": "CLI-001",
+    "name": "Ana Lopez",
+    "email": "ana@gym.test",
+    "phone": "5551-2001",
+    "joinedAt": "2026-01-12",
+    "status": "Activo",
+    "branchId": "b1",
+    "membershipId": "m1",
+    "currentAreaId": "a-cardio",
+    "observations": "Prefiere entrenar temprano."
+  },
+  {
+    "id": "c2",
+    "code": "CLI-002",
+    "name": "Carlos Ruiz",
+    "email": "carlos@gym.test",
+    "phone": "5551-2002",
+    "joinedAt": "2026-02-03",
+    "status": "Activo",
+    "branchId": "b1",
+    "membershipId": "m2",
+    "currentAreaId": "a-pesas",
+    "observations": "Renovacion pendiente esta semana."
+  },
+  {
+    "id": "c3",
+    "code": "CLI-003",
+    "name": "Sofia Garcia",
+    "email": "sofia@gym.test",
+    "phone": "5551-2003",
+    "joinedAt": "2026-03-18",
+    "status": "Activo",
+    "branchId": "b2",
+    "membershipId": "m3",
+    "currentAreaId": "a-spinning",
+    "observations": "Asiste a spinning."
+  },
+  {
+    "id": "c4",
+    "code": "CLI-004",
+    "name": "Jose Martinez",
+    "email": "jose@gym.test",
+    "phone": "5551-2004",
+    "joinedAt": "2026-04-02",
+    "status": "Suspendido",
+    "branchId": "b1",
+    "membershipId": "m4",
+    "currentAreaId": "",
+    "observations": "Suspension temporal solicitada."
+  },
+  {
+    "id": "c5",
+    "code": "CLI-005",
+    "name": "Marta Perez",
+    "email": "marta@gym.test",
+    "phone": "5551-2005",
+    "joinedAt": "2026-01-02",
+    "status": "Activo",
+    "branchId": "b2",
+    "membershipId": "m5",
+    "currentAreaId": "a-funcional",
+    "observations": "Cliente Haute."
+  }
+]

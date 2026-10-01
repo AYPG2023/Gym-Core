@@ -1,0 +1,18 @@
+[
+  {
+    "id": "rb1",
+    "referralId": "ref1",
+    "referrerClientId": "c1",
+    "referredClientId": "c2",
+    "paymentId": "pay2",
+    "type": "Saldo a favor",
+    "amount": 10,
+    "pendingAmount": 10,
+    "beneficiary": "Cliente que refiere",
+    "generatedAt": "2026-09-05",
+    "expiresAt": "2026-10-05",
+    "status": "Aprobado",
+    "appliedAt": "",
+    "appliedPaymentId": ""
+  }
+]

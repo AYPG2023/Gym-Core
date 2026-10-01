@@ -1,0 +1,50 @@
+[
+  {
+    "id": "b1",
+    "code": "PREM",
+    "name": "Sucursal Premium",
+    "address": "Avenida Reforma 10-45",
+    "phone": "2410-1000",
+    "email": "premium@gym.test",
+    "manager": "Valeria Rivas",
+    "opens": "04:00",
+    "closes": "22:00",
+    "weekdayHours": "Lunes-viernes 04:00-22:00",
+    "weekendHours": "Sabados y domingos 06:00-14:00",
+    "expectedAttendance": "75-100 personas",
+    "amenities": [
+      "Piscina",
+      "Boxeo",
+      "Cardio",
+      "Pesas",
+      "Cafeteria"
+    ],
+    "hasPool": true,
+    "hasBoxingRing": true,
+    "capacity": 100,
+    "status": "Activa"
+  },
+  {
+    "id": "b2",
+    "code": "MJD",
+    "name": "Majadas Athletic",
+    "address": "Calzada Roosevelt 26-70",
+    "phone": "2410-2000",
+    "email": "majadas@gym.test",
+    "manager": "Mario Escobar",
+    "opens": "04:00",
+    "closes": "22:00",
+    "weekdayHours": "Lunes-viernes 04:00-22:00",
+    "weekendHours": "Sabados y domingos 06:00-14:00",
+    "expectedAttendance": "75-100 personas",
+    "amenities": [
+      "Spinning",
+      "Entrenamiento funcional",
+      "Cafeteria"
+    ],
+    "hasPool": false,
+    "hasBoxingRing": false,
+    "capacity": 100,
+    "status": "Activa"
+  }
+]

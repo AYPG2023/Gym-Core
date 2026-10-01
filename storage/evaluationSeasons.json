@@ -1,0 +1,167 @@
+[
+  {
+    "id": "season-active-2026",
+    "name": "Temporada alta 2026",
+    "startDate": "2026-09-01",
+    "endDate": "2026-09-30",
+    "status": "Activa",
+    "branchId": "all",
+    "minSurveys": 1,
+    "metrics": [
+      {
+        "key": "coach_sessions",
+        "role": "Coach",
+        "label": "Coaching impartido",
+        "goal": 1,
+        "unit": "sesiones",
+        "maxBonus": 700,
+        "tiers": [
+          {
+            "from": 0,
+            "bonusPercent": 0
+          },
+          {
+            "from": 80,
+            "bonusPercent": 90
+          },
+          {
+            "from": 95,
+            "bonusPercent": 100
+          }
+        ]
+      },
+      {
+        "key": "coach_satisfaction",
+        "role": "Coach",
+        "label": "Satisfaccion de clientes",
+        "goal": 100,
+        "unit": "%",
+        "maxBonus": 500,
+        "tiers": [
+          {
+            "from": 0,
+            "bonusPercent": 0
+          },
+          {
+            "from": 80,
+            "bonusPercent": 90
+          },
+          {
+            "from": 95,
+            "bonusPercent": 100
+          }
+        ]
+      },
+      {
+        "key": "reception_sales",
+        "role": "Recepcionista",
+        "label": "Venta de membresias",
+        "goal": 2,
+        "unit": "ventas",
+        "maxBonus": 700,
+        "tiers": [
+          {
+            "from": 0,
+            "bonusPercent": 0
+          },
+          {
+            "from": 80,
+            "bonusPercent": 90
+          },
+          {
+            "from": 95,
+            "bonusPercent": 100
+          }
+        ]
+      },
+      {
+        "key": "reception_satisfaction",
+        "role": "Recepcionista",
+        "label": "Satisfaccion en atencion",
+        "goal": 100,
+        "unit": "%",
+        "maxBonus": 500,
+        "tiers": [
+          {
+            "from": 0,
+            "bonusPercent": 0
+          },
+          {
+            "from": 80,
+            "bonusPercent": 90
+          },
+          {
+            "from": 95,
+            "bonusPercent": 100
+          }
+        ]
+      }
+    ],
+    "closedResults": null
+  },
+  {
+    "id": "season-closed-2026",
+    "name": "Temporada abril-junio 2026",
+    "startDate": "2026-04-01",
+    "endDate": "2026-06-30",
+    "status": "Cerrada",
+    "branchId": "all",
+    "minSurveys": 2,
+    "metrics": [
+      {
+        "key": "coach_sessions",
+        "role": "Coach",
+        "label": "Coaching impartido",
+        "goal": 60,
+        "unit": "sesiones",
+        "maxBonus": 650,
+        "tiers": [
+          {
+            "from": 0,
+            "bonusPercent": 0
+          },
+          {
+            "from": 80,
+            "bonusPercent": 75
+          },
+          {
+            "from": 95,
+            "bonusPercent": 100
+          }
+        ]
+      },
+      {
+        "key": "coach_satisfaction",
+        "role": "Coach",
+        "label": "Satisfaccion de clientes",
+        "goal": 100,
+        "unit": "%",
+        "maxBonus": 450,
+        "tiers": [
+          {
+            "from": 0,
+            "bonusPercent": 0
+          },
+          {
+            "from": 80,
+            "bonusPercent": 80
+          },
+          {
+            "from": 95,
+            "bonusPercent": 100
+          }
+        ]
+      }
+    ],
+    "closedResults": [
+      {
+        "employeeId": "e1",
+        "totalBonus": 980
+      },
+      {
+        "employeeId": "e2",
+        "totalBonus": 520
+      }
+    ]
+  }
+]

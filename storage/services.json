@@ -1,0 +1,32 @@
+[
+  {
+    "id": "srv1",
+    "name": "Consulta nutricional",
+    "partnerId": "par1",
+    "branchId": "b1",
+    "price": 220,
+    "schedule": "Lun y mie 09:00-13:00",
+    "availability": "6 espacios",
+    "status": "Propuesta pendiente de validacion"
+  },
+  {
+    "id": "srv2",
+    "name": "Masaje deportivo",
+    "partnerId": "par3",
+    "branchId": "b1",
+    "price": 180,
+    "schedule": "Vie 14:00-18:00",
+    "availability": "4 espacios",
+    "status": "Propuesta pendiente de validacion"
+  },
+  {
+    "id": "srv3",
+    "name": "Coaching adicional",
+    "partnerId": "",
+    "branchId": "b2",
+    "price": 120,
+    "schedule": "Segun coach",
+    "availability": "Configurable",
+    "status": "Activo"
+  }
+]

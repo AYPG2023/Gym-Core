@@ -1,64 +1,84 @@
 # Renovatio Gym
 
-Prototipo academico funcional para administracion de Renovatio Gym. Usa HTML5, Tailwind por CDN, JavaScript puro, Lucide Icons, Chart.js y LocalStorage.
+Aplicacion academica migrada a PHP puro. Conserva el estilo visual del prototipo original, pero ahora la navegacion, autenticacion, permisos, formularios, validaciones principales y persistencia se ejecutan del lado servidor.
 
 ## Ejecucion
 
-Abre `index.html` directamente o usa Live Server.
+Requisitos:
 
-Clave demo: `Gym2026!`
+- PHP 8.1 o superior
+- Navegador moderno
+- Sin Laravel, Composer ni base de datos
 
-Cuentas:
+Iniciar servidor:
+
+```bash
+php -S localhost:8000
+```
+
+Abrir:
+
+```text
+http://localhost:8000
+```
+
+Clave demo para todas las cuentas:
+
+```text
+Gym2026!
+```
+
+## Cuentas demo
 
 - Administrador: `admin@gym.test`
+- Gerente general: `gerencia@gym.test`
+- Supervisor: `supervisor@gym.test`
 - Recepcionista: `recepcion@gym.test`
-- Entrenador: `trainer@gym.test`
+- Coach: `trainer@gym.test`
 - Cliente: `cliente@gym.test`
+- Compras: `compras@gym.test`
+- Inventario: `inventario@gym.test`
+- Cafeteria: `cafeteria@gym.test`
+- Partner: `partner@gym.test`
 
-## Funcionalidades
+## Arquitectura
 
-- Login simulado por rol.
-- Dashboard con indicadores y graficas.
-- Gestion administrativa de clientes, empleados, membresias, accesos, areas/equipos, horarios, reservas, cafeteria, suplementos, ventas, compras, mantenimiento, metricas, reportes y servicios.
-- Modulo de sucursales con capacidad, contacto, encargado, estado e indicadores relacionados.
-- Inventario con pestanas separadas para areas y equipos, sin ocupacion individual de maquinas.
-- Certificado de calidad separado de observaciones generales, con archivo PDF/JPG/PNG simulado, estados con badge, historial de reemplazos, detalle por equipo y bloqueo de activacion sin certificado aprobado.
-- Mantenimiento separado del inventario con filtros, historial y acciones por estado.
-- Dashboard filtrable por sucursal.
-- Horarios y clases con creacion/edicion administrativa, asignacion de sucursal, area, coach, fecha, hora, cupo y estado.
-- Reportes por categorias con imprimir, CSV y descarga simulada.
-- Clientes con busqueda, filtros por sucursal, membresia y estado, detalle de pagos, membresias, reservas, asistencias y observaciones.
-- Portal de cliente con modulo de referidos: codigo personal, copiar/compartir, registro de referido, historial, estados, beneficios obtenidos y saldo pendiente.
-- Programa administrativo de referidos configurable desde Configuracion, con membresias participantes, vigencia, tipo/monto de beneficio, beneficiario, limite, condiciones y estado.
-- Historial administrativo de referidos con filtros por sucursal, membresia, fecha y estado; el beneficio se genera solo con pago de membresia aprobado.
-- Empleados con busqueda, filtros por sucursal, puesto y estado, acciones de activacion/desactivacion y datos laborales.
-- Metricas y bonos por temporada de evaluacion, con escalones configurables, montos maximos por metrica e historico cerrado sin recalculo automatico.
-- Metricas individuales para coaches y recepcionistas, con dos bonos configurables e independientes.
-- Encuestas de satisfaccion para servicios completados, con conversion a porcentaje, comentarios y minimo configurable por temporada.
-- Ordenes de compra de equipos, repuestos, accesorios, oficina e insumos, con certificacion obligatoria para equipos.
-- Facturacion electronica simulada con estados, envio por correo, descarga y reintento.
-- Cafeteria y suplementos con productos, bebidas, combos, partners, stock y ventas.
-- Vista de cliente Menu / Tienda con carrito, descuentos por membresia y factura.
-- Servicios tercerizados con nutricionista como partner y agenda marcada como propuesta pendiente de validacion.
-- Panel del coach limitado a sus clases, participantes, asistencia, historial y metricas.
-- Vista de cliente para responder encuestas pendientes y consultar confirmaciones enviadas.
-- Reportes financieros restringidos por rol y reporte diario por sucursal.
-- Area fisica de Boxeo en Sucursal Premium con ring certificado, capacidad y horario configurables.
-- Clases demo de Boxeo con coach, cupo, inscritos, disponibilidad y reporte especifico.
-- Sucursales con amenidades administradas como areas operativas.
-- Ordenes de compra con visto bueno del administrador de sucursal y gerente general antes de aprobar.
-- Recepcion de equipo con cantidades recibidas, entrega completa/parcial e incorporacion opcional al inventario antes de registrar maquina.
-- Reglas de negocio para reservas, cupos, equipos, areas, membresias, facturas, compras certificadas y roles.
-- Datos persistentes en LocalStorage.
-- Boton para restaurar datos demo.
-- Modales, toasts, filtros, badges de estados y tablas responsivas.
+- `index.php`: entrada autenticada y router por modulo.
+- `login.php` / `logout.php`: sesiones PHP.
+- `config/modules.php`: definicion central de modulos, permisos, colecciones y campos.
+- `includes/auth.php`: usuario actual, roles, permisos y CSRF.
+- `includes/storage.php`: lectura/escritura JSON con `flock()`.
+- `includes/validation.php`: validaciones compartidas.
+- `includes/header.php`, `sidebar.php`, `footer.php`, `flash.php`: componentes reutilizables.
+- `modules/dashboard.php`: indicadores calculados desde JSON.
+- `modules/generic.php`: tablas y formularios reutilizables para modulos.
+- `actions/save.php`, `status.php`, `delete.php`: operaciones POST con Redirect/Get, auditoria y flash.
+- `reset-demo.php`: restaura datos demo desde `storage/demo`, solo para usuarios con permiso de configuracion.
+- `storage/*.json`: persistencia principal.
+- `storage/demo/*.json`: copia original de datos demo.
+- `uploads/certificates/`: archivos de certificados simulados.
 
-## Estructura
+## Funcionalidades migradas
 
-- `index.html`: shell de login y aplicacion.
-- `assets/css/styles.css`: estilos del sistema visual.
-- `assets/js/data.js`: datos semilla.
-- `assets/js/storage.js`: LocalStorage.
-- `assets/js/validations.js`: reglas de negocio y calculos.
-- `assets/js/reservations.js`: operaciones de reservas y auditoria.
-- `assets/js/app.js`: renderizado, navegacion y eventos.
+- Login simulado con sesiones PHP.
+- Menu lateral segun rol autenticado.
+- Bloqueo 403 al escribir URLs sin permiso.
+- Formularios con POST, CSRF y patron POST/Redirect/GET.
+- Persistencia en archivos JSON separados por coleccion.
+- Auditoria de operaciones.
+- Dashboard con clientes, ingresos, reservas, equipos, clases, compras y encuestas.
+- Modulos disponibles: dashboard, sucursales, clientes, empleados, membresias, accesos, areas y equipos, horarios, reservas, cafeteria, ventas y pagos, compras, inventario, mantenimiento, referidos, encuestas, metricas, reportes y configuracion.
+- Certificados en equipos con carga PDF/JPG/PNG y bloqueo para impedir estado Operativo sin certificado aprobado.
+- Eliminacion segura de planes: si tienen membresias relacionadas se desactivan.
+- JavaScript reducido a interacciones visuales: menu movil, filtros instantaneos, confirmaciones, toasts y graficas.
+
+## Datos demo
+
+Los datos originales de `assets/js/data.js` fueron migrados a JSON. Para regenerarlos desde el seed:
+
+```bash
+node tools/migrate-seed.js
+```
+
+Desde la aplicacion, el boton **Restaurar demo** copia `storage/demo/*.json` sobre `storage/*.json`; requiere sesion con permiso de configuracion.
+

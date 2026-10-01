@@ -1,0 +1,30 @@
+[
+  {
+    "id": "t1",
+    "name": "Lucia Mendez",
+    "specialty": "Coaching y funcional",
+    "status": "Activo",
+    "branchId": "b1"
+  },
+  {
+    "id": "t2",
+    "name": "Esteban Cano",
+    "specialty": "Pesas",
+    "status": "Activo",
+    "branchId": "b1"
+  },
+  {
+    "id": "t3",
+    "name": "Paola Herrera",
+    "specialty": "Spinning",
+    "status": "Activo",
+    "branchId": "b2"
+  },
+  {
+    "id": "t4",
+    "name": "Hugo Diaz",
+    "specialty": "Boxeo",
+    "status": "Activo",
+    "branchId": "b1"
+  }
+]

@@ -1,0 +1,10 @@
+[
+  {
+    "id": "log1",
+    "at": "2026-09-09 08:03",
+    "user": "Sistema",
+    "module": "Reservas",
+    "action": "Confirmar reserva",
+    "detail": "Ana Lopez / Cardio"
+  }
+]

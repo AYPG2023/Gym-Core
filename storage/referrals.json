@@ -1,0 +1,17 @@
+[
+  {
+    "id": "ref1",
+    "referrerClientId": "c1",
+    "referralCode": "REF-CLI001",
+    "referredClientId": "c2",
+    "referredName": "Carlos Ruiz",
+    "referredPhone": "5551-2002",
+    "referredEmail": "carlos@gym.test",
+    "branchId": "b1",
+    "membershipId": "m2",
+    "paymentId": "pay2",
+    "benefitId": "rb1",
+    "date": "2026-09-05",
+    "status": "Beneficio aprobado"
+  }
+]
